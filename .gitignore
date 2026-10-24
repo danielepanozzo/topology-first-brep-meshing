@@ -1,0 +1,22 @@
+*.pyc
+*.txt
+*.log
+*.json
+*.pkl
+*.csv
+*.obj
+*.lprof
+*.cpython-311.pyc
+*.hdf5
+*.yaml
+*.wandb
+*.sbatch
+# HPC batch and evaluation scripts, kept local
+metaprogramming/
+
+# example inputs
+!data/simple/*.hdf5
+
+# packaging files that the patterns above would skip
+!requirements.txt
+!third_party/*
