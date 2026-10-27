@@ -176,3 +176,95 @@ def test_retry_skips_the_curvature_cap(monkeypatch):
     out = im._run_initial_meshing_for_face(FakeFace(), {}, target_error=0.1, attempt=1,
                                            prev_V_uv=V, prev_F=F, prev_sub_domains=[(0., 1., 0., 1.)])
     assert out[0] == 9 and out[6:] == (None, None, None)  # one upsample level of the 4-vertex mesh
+
+
+class FakePool:
+    """Stands in for ProcessPoolExecutor. plan maps face id -> (delay in s, ok): a face
+    with delay 0 is done at submit, the others are finished by a timer unless cancelled."""
+
+    def __init__(self, plan):
+        self.plan, self.futures, self.timers, self.shutdowns = plan, {}, [], []
+
+    def submit(self, fn, face_id, *args):
+        from concurrent.futures import Future
+        import threading
+        delay, ok = self.plan[face_id]
+        r = dict(ok=ok, patch_id=face_id, attempts=1, duration=0.01)
+        r.update(dict(V=[[0., 0., 0.]], connectivity=None, tracing=None) if ok else dict(error="forced failure"))
+        fut = self.futures[face_id] = Future()
+
+        def finish():
+            if fut.set_running_or_notify_cancel():
+                fut.set_result(r)
+        if delay == 0:
+            finish()
+        else:
+            self.timers.append(threading.Timer(delay, finish))
+            self.timers[-1].start()
+        return fut
+
+    def shutdown(self, wait=True, cancel_futures=False):
+        self.shutdowns.append(cancel_futures)
+        if cancel_futures:  # finished futures stay as they are
+            for fut in self.futures.values():
+                fut.cancel()
+            for timer in self.timers:
+                timer.cancel()
+        if wait:
+            for timer in self.timers:
+                timer.join()
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *exc):
+        self.shutdown(wait=True)
+
+
+def run_main_with_pool(monkeypatch, tmp_path, plan):
+    """main() on data/simple/Box.hdf5 (faces 0-5) through the parallel path with a FakePool."""
+    import concurrent.futures
+    import json
+    import os
+    import sys
+    import main
+    import utils.config as config
+    pool = FakePool(plan)
+    monkeypatch.setattr(concurrent.futures, "ProcessPoolExecutor", lambda **kwargs: pool)
+    monkeypatch.setattr(main, "PARALLEL_MIN_FACES", 2)
+    monkeypatch.setattr(config, "oversized_dump_dir", config.oversized_dump_dir)  # restored after the test
+    box = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "simple", "Box.hdf5")
+    out = tmp_path / "out"
+    monkeypatch.setattr(sys, "argv", ["main.py", box, str(out), "--mmg2d_path", sys.executable, "--workers", "4"])
+    with pytest.raises(Exception) as exc_info:
+        main.main()
+    checkpoints = sorted(int(p.stem.split("_")[1]) for p in (out / "checkpoints" / "local").glob("patch_*.pkl"))
+    with open(out / "result.json") as f:
+        result = json.load(f)
+    return pool, exc_info.value, checkpoints, result
+
+
+def test_parallel_failure_cancels_queued_faces(monkeypatch, tmp_path):
+    # face 0 is slow, faces 1-4 finish at once, face 5 fails after them
+    plan = {0: (0.5, True), 1: (0, True), 2: (0, True), 3: (0, True), 4: (0, True), 5: (0.05, False)}
+    pool, exc, checkpoints, result = run_main_with_pool(monkeypatch, tmp_path, plan)
+    assert isinstance(exc, ValueError) and "Failed to process patch 5" in str(exc)
+    assert pool.shutdowns[0] is True and pool.futures[0].cancelled()
+    assert checkpoints == [1, 2, 3, 4]  # written as each face finished
+    assert list(result["patches"]) == ["1", "2", "3", "4", "5"]
+    assert result["patches"]["5"]["status"] == "failed" and result["status"] == "failed"
+
+
+def test_parallel_success_records_in_face_order(monkeypatch, tmp_path):
+    import main
+
+    def stop(*args):
+        raise RuntimeError("stop after the local step")
+    monkeypatch.setattr(main, "align_adjacent_patches", stop)
+    plan = {0: (0.1, True), 1: (0, True), 2: (0.05, True), 3: (0, True), 4: (0, True), 5: (0, True)}
+    pool, exc, checkpoints, result = run_main_with_pool(monkeypatch, tmp_path, plan)
+    assert str(exc) == "stop after the local step"
+    assert pool.shutdowns == [False]
+    assert checkpoints == [0, 1, 2, 3, 4, 5]
+    assert list(result["patches"]) == ["0", "1", "2", "3", "4", "5"]
+    assert all(p["status"] == "success" for p in result["patches"].values())

@@ -260,8 +260,13 @@ def main():
             if args.patch is not None and not todo and args.patch not in patch_to_V:
                 raise ValueError(f"No face with id {args.patch} in part {args.part}")
 
+            def save_checkpoint(r):
+                atomic_save({"V": r["V"],
+                             "connectivity": r["connectivity"],
+                             "tracing": r["tracing"]}, local_ckpt_folder / f"patch_{r['patch_id']}.pkl")
+
             def finish_patch(r):
-                """Record one face's result (in face order); raise on failure."""
+                """Record one face's result; raise on failure."""
                 patch_id = r["patch_id"]
                 if not r["ok"]:
                     result_log.patch_failed(
@@ -274,31 +279,46 @@ def main():
                 patch_to_tracing_data[patch_id] = r["tracing"]
                 patch_to_V[patch_id] = r["V"]
                 patch_to_connectivity[patch_id] = r["connectivity"]
-                atomic_save({"V": r["V"],
-                             "connectivity": r["connectivity"],
-                             "tracing": r["tracing"]}, local_ckpt_folder / f"patch_{patch_id}.pkl")
                 print_if_verbose(f"///// Finished local steps for patch {patch_id} /////")
 
             if args.workers <= 1 or len(todo) < PARALLEL_MIN_FACES:
                 for face in todo:
-                    finish_patch(mesh_one_face(face, edge_geometry_data, all_corners, target_error,
-                                               args.mmg2d_path, diag_bbox))
+                    r = mesh_one_face(face, edge_geometry_data, all_corners, target_error,
+                                      args.mmg2d_path, diag_bbox)
+                    if r["ok"]:
+                        save_checkpoint(r)
+                    finish_patch(r)
             else:
                 import multiprocessing as mp
-                from concurrent.futures import ProcessPoolExecutor
+                from concurrent.futures import ProcessPoolExecutor, as_completed
 
                 def face_size(face):  # polyline points on the face's edges: predicts its meshing time
                     return sum(len(edge_geometry_data.get(he.edge.id, ())) for loop in face.loops for he in loop.halfedges)
 
+                done, failed = {}, None  # results of the finished faces by id; the first failed face
                 with ProcessPoolExecutor(max_workers=min(args.workers, len(todo)),
                                          mp_context=mp.get_context("spawn"),
                                          initializer=_worker_init,
                                          initargs=(args.abs_file, args.part, str(edge_geometry_ckpt),
                                                    config.verbose, config.oversized_dump_dir)) as pool:
-                    futures = {face.id: pool.submit(_worker_mesh_face, face.id, target_error, args.mmg2d_path, diag_bbox)
-                               for face in sorted(todo, key=face_size, reverse=True)}  # largest first
-                    for face in todo:  # record in face order, as in the serial loop
-                        finish_patch(futures[face.id].result())
+                    futures = [pool.submit(_worker_mesh_face, face.id, target_error, args.mmg2d_path, diag_bbox)
+                               for face in sorted(todo, key=face_size, reverse=True)]  # largest first
+                    try:
+                        for future in as_completed(futures):
+                            r = future.result()
+                            if not r["ok"]:
+                                failed = r
+                                break
+                            save_checkpoint(r)  # right away, so that --resume keeps it if the run is killed
+                            done[r["patch_id"]] = r
+                    finally:
+                        if len(done) < len(todo):  # a face failed: drop the queued faces
+                            pool.shutdown(wait=False, cancel_futures=True)
+                        for face in todo:  # record in face order, as in the serial loop
+                            if face.id in done:
+                                finish_patch(done[face.id])
+                    if failed is not None:
+                        finish_patch(failed)  # records the failure and raises
 
         if args.patch is not None:  # alignment and fusion need every face
             print(f"Local step of face {args.patch} done; checkpoint in {local_ckpt_folder}")
