@@ -160,7 +160,7 @@ def write_timing_csv(results, csv_path):
     if os.path.exists(csv_path):
         print(f"Warning: {csv_path} already exists and will be overwritten.")
     else:
-        os.makedirs(os.path.dirname(csv_path), exist_ok=True)
+        os.makedirs(os.path.dirname(csv_path) or ".", exist_ok=True)
     with open(csv_path, "w", newline="") as f:
         writer = csv.DictWriter(f, fieldnames=fields)
         writer.writeheader()
@@ -189,8 +189,8 @@ def main():
         data = load_result(folder)
         if data is not None:
             if data.get("status") == "success" and not os.path.exists(
-                os.path.join(folder, "remesh.done")
-            ):
+                os.path.join(folder, "remeshed.vtu")
+            ):  # forward stage done, remeshing stage not (yet)
                 data["status"] = "running"
             results[entry] = data
             ok = check_topo(folder)
