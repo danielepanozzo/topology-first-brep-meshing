@@ -68,3 +68,42 @@ def test_initial_fallback_without_disk_component_raises_value_error():
     with pytest.raises(ValueError, match="initial loop fallback tracing failed"):
         trace.trace_initial_loop_fallback(V, conn, PatchRegularSpaceData(), LoopTopologyData(), LoopGeometryData(), [],
                                           InitialLoopTracingData(), ignore_trace_geometry=True)
+
+
+def cone_initial_loop(corner_id_to_vid):
+    """Initial loop of a cone: degenerate apex feature 0 at corner 0 (apex vid 7), seam 1
+    from corner 0 to 1 and back, rim 2 around corner 1."""
+    topo = LoopTopologyData(halfedges=[HalfEdge(0, True, True, 0, 0), HalfEdge(1, True, False, 0, 1),
+                                       HalfEdge(2, True, False, 1, 1), HalfEdge(1, False, False, 1, 0)],
+                            seam_ids_set={1})
+    geometry = LoopGeometryData({0: np.empty((0, 3)), 1: np.zeros((3, 3)), 2: np.zeros((3, 3))})
+    init = InitialLoopTracingData(initial_loop_id=0, singularity_corner_mapping={0: 7})
+    init.loop_tracing_data.corner_id_to_vid = dict(corner_id_to_vid)
+    return topo, geometry, init
+
+
+def fake_trace(new_vids, record=None):
+    """Stand-in for trace_one_feature_edge: corners without a vid get the next of new_vids,
+    one interior vertex per edge, and the regular space data is updated as by a real trace."""
+    def trace_edge(V, conn, rsd, poly, edge_tracing_data, first_pair, second_pair, *args, **kwargs):
+        if record is not None:
+            record(rsd)
+        for pair in (first_pair, second_pair):
+            if pair[1] is None:
+                pair[1] = new_vids.pop(0)
+        edge_tracing_data.traced_vids = [first_pair[1], new_vids.pop(0), second_pair[1]]
+        trace.update_regular_space_data(edge_tracing_data.traced_vids, rsd)
+    return trace_edge
+
+
+def test_apex_check_runs_when_boundary_is_prohibited(monkeypatch):
+    # second heuristic: the boundary is prohibited, so the boundary-hug check is
+    # skipped; the seam traced from a substitute vertex 11 next to the apex must
+    # still be rejected
+    monkeypatch.setattr(trace, "trace_one_feature_edge", fake_trace([5, 20, 21]))
+    monkeypatch.setattr(trace, "after_trace_initial_loop", lambda *args: True)
+    V, conn = square()
+    rsd = PatchRegularSpaceData(prohibited_vids_set={0, 1, 2, 3})
+    topo, geometry, init = cone_initial_loop({0: 11})
+    with pytest.raises(ValueError, match=r"apex corner 0 \(vid 7\) is not the end"):
+        trace.trace_initial_loop_with_heuristics(V, conn, rsd, topo, geometry, init, off_boundary=True)

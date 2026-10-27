@@ -82,9 +82,7 @@ def detect_boundary_hug_after_halfedge(V,
                                        connectivity,
                                        patch_regular_space_data,
                                        feature_id_to_polyline_V,
-                                       traced_id_set,
-                                       loop_topology_data,
-                                       initial_loop_tracing_data):
+                                       traced_id_set):
     # Two flavors of boundary-hug, both detected here:
     #   (a) After the trace, no component contains all traced edges — the
     #       just-finished halfedge scattered traces across components.
@@ -96,10 +94,8 @@ def detect_boundary_hug_after_halfedge(V,
     # just fall through and let after_trace_initial_loop pick the right
     # component. Also guards against empty-curve KDTree queries in case (b).
     # Degenerate feature edges (a singular apex) have an empty polyline and are
-    # never traced. Once every other feature edge is traced they must be
-    # anchored at the end of a traced feature (check_degenerate_apex_features).
+    # never traced, so they don't count as remaining.
     if not any(fid not in traced_id_set and len(P) > 0 for fid, P in feature_id_to_polyline_V.items()):
-        check_degenerate_apex_features(loop_topology_data, initial_loop_tracing_data)
         return False
     F_np = np.array(connectivity.F)
     cc = traced_edge_separated_components(F_np,
@@ -522,9 +518,7 @@ def trace_initial_loop_with_heuristics(V,
                                                        connectivity,
                                                        patch_regular_space_data,
                                                        loop_geometry_data.feature_id_poly_V_True_orientation,
-                                                       initial_loop_tracing_data.loop_tracing_data.traced_id_set,
-                                                       loop_topology_data,
-                                                       initial_loop_tracing_data)):
+                                                       initial_loop_tracing_data.loop_tracing_data.traced_id_set)):
             print_if_verbose(f"    Halfedge {halfedge.feature_id} appears to hug boundary; reverting and retrying with boundary prohibited.")
             snapshot = { 
                 "V_len": pre_trace_V_len,
@@ -567,6 +561,14 @@ def trace_initial_loop_with_heuristics(V,
                 restore_boundary_prohibition(patch_regular_space_data,
                                              added_vids,
                                              added_edges)
+
+    # Once every feature edge with a polyline is traced, the degenerate (singular
+    # apex) features must be anchored at the end of a traced feature. Checked here
+    # rather than in the boundary-hug check, which is skipped when the boundary is
+    # prohibited (the second heuristic, patch meshes without a boundary).
+    if not any(fid not in initial_loop_tracing_data.loop_tracing_data.traced_id_set and len(P) > 0
+               for fid, P in loop_geometry_data.feature_id_poly_V_True_orientation.items()):
+        check_degenerate_apex_features(loop_topology_data, initial_loop_tracing_data)
 
     # check the topology after the initial loop tracing
     if not initial_trace_failed and not after_trace_initial_loop(connectivity,
