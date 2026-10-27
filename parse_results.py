@@ -27,6 +27,8 @@ def load_result(folder):
     except (json.JSONDecodeError, IOError):
         return None
 def check_topo(folder):
+    """topo_ok of <folder>/eval.json, which the authors' batch evaluation writes (no script in this release
+    does); None when the file is missing."""
     path = os.path.join(folder, "eval.json")
     if not os.path.exists(path):
         return None

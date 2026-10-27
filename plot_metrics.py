@@ -239,6 +239,7 @@ def write_below_threshold_list(df, id_col, col, threshold, out_path):
     print(f"  wrote {out_path} ({len(sub)} models with {col} <= {threshold})")
 
 
+# Columns of the authors' batch timing CSVs (not produced by any script in this release).
 STAGE_DEFS = [
     ("Stage 1+2", "patch_tracing_sum_s", 0),
     ("Stage 3+4", "align_fuse_s",        2),
@@ -344,7 +345,8 @@ if __name__ == "__main__":
                         help="Also emit stage_runtime_mean.<fmt> and stage_runtime_median.<fmt>: "
                              "horizontal stacked bars per input CSV using "
                              "patch_tracing_sum_s (Stage 1+2), align_fuse_s (Stage 3+4), remesh_s (Stage 5). "
-                             "Rows with n_runs_unfinished > 0 are excluded from the aggregates.")
+                             "Rows with n_runs_unfinished > 0 are excluded from the aggregates. These columns come "
+                             "from the authors' batch timing CSVs; no script in this release writes them.")
     parser.add_argument("--stage-bar-only", action="store_true",
                         help="Implies --stage-bar and skips the per-column histograms.")
     parser.add_argument("--dataset-labels", nargs="*", default=None,
