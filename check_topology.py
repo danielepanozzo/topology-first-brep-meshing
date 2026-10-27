@@ -12,7 +12,6 @@ remeshed_edges.vtu in <output_folder>:
 Exits with status 1 if any check fails.
 """
 import argparse
-import json
 import os
 import sys
 from collections import defaultdict
@@ -173,11 +172,13 @@ def load_remeshed(folder):
             edge2chain[eid] = ordered_chain(pairs, corner_vids)
         except ValueError as e:
             raise ValueError(f"Edge {eid}: {e}")
-    # zero-length B-rep edges have no segments: they are just their corner's vertex
-    with open(os.path.join(folder, "features.json")) as f:
-        degenerate = json.load(f).get("degenerate_feature_to_cid", {})
-    for eid, cid in degenerate.items():
-        edge2chain[int(eid)] = [corner2vid[int(cid)]]
+    # zero-length B-rep edges have no segments: they are just their corner's vertex. In fused.pkl,
+    # next to the remeshed mesh, their chain is that corner's vertex alone.
+    _, _, _, fused_chains, fused_corners = load_fused_output(os.path.join(folder, "fused.pkl"))[:5]
+    corner_of_vid = {vid: c for c, vid in fused_corners.items()}
+    for eid, chain in fused_chains.items():
+        if len(chain) < 2:
+            edge2chain[int(eid)] = [corner2vid[corner_of_vid[chain[0]]]]
     return F, patch2fid, edge2chain, corner2vid
 
 
