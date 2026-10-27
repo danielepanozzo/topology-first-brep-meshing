@@ -72,7 +72,7 @@ def solve_patch_linear_system(V,
                               F,
                               patch_data,
                               patch_tracing_data,
-                              summary=None,
+                              summary,
                               ignore_errors=False):
     check_apexes_on_traced_features(patch_tracing_data)
     consolidated_V, consolidated_F = consolidate_one_patch(V, F, patch_tracing_data)
@@ -277,7 +277,7 @@ def local_step_one_patch(patch_id,
                          patch_data,
                          patch_singularity,
                          all_corners_for_part,
-                         summary=None,
+                         summary,
                          ignore_errors=True,
                          attempt = ATTEMPT_MAX,
                          ignore_trace_geometry=False

@@ -937,7 +937,7 @@ def detect_collapsed_iso_lines(face, V_uv, F, bounds, u_periodic, v_periodic,
 def _run_initial_meshing_for_face(
     face,
     edge_geometry_data: dict,
-    target_error: Optional[float] = 5e-2,
+    target_error: float = 5e-2,
     mmg2d_path: str = "mmg2d_O3",
     num_u_segments: int = 8,
     num_v_segments: int = 8,
@@ -994,7 +994,7 @@ def _run_initial_meshing_for_face(
     # the surface's minimum principal-curvature radius, or the background mesh
     # leaves the surface's reach and projections of nearby features alias.
     # Retries (attempt > 0) run no mmg and do not use the target.
-    if target_error is not None and attempt == 0:
+    if attempt == 0:
         capped = curvature_capped_error(face.surface, target_error)
         if capped < target_error:
             print_if_verbose(

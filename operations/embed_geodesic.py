@@ -425,6 +425,8 @@ def embed_loops_one_patch(V_uv: list,
                         singularity_sides: dict = None,
                         interior_singularity_idx=None,
                         use_feature_conflict_refine: bool = True):
+    if max_iterations < 1:  # the remesh loop below must run at least once
+        raise ValueError(f"embed_loops_one_patch needs max_iterations >= 1, got {max_iterations}")
 
     embedded_ids = set()
     uv_segments = []

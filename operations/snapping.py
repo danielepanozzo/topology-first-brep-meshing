@@ -195,7 +195,7 @@ def harmonic(V, F, b, bc):
 
     return W
 
-def snapping_for_patch(V, F, bi, bp, summary=None, ignore_errors=False):
+def snapping_for_patch(V, F, bi, bp, summary, ignore_errors=False):
     # Input validation
     # Ensure bi is within valid range
     if len(bi) > 0 and (np.min(bi) < 0 or np.max(bi) >= len(V)):
@@ -241,7 +241,7 @@ def solve_one_patch_linear_system(V,
                                   F,
                                   patch_tracing_data,
                                   patch_loop_geometry_data,
-                                  summary=None,
+                                  summary,
                                   ignore_errors=False):
     bi, bp = get_patch_boundary_condition(V,
                                           patch_loop_geometry_data,
