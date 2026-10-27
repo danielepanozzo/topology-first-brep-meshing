@@ -303,6 +303,8 @@ def trace_initial_loop_new(V,
                        initial_loop_tracing_data,
                        ignore_trace_geometry,
                        is_last_attempt=False):
+    # Returns whether trace_initial_loop_fallback ran (summary["initial_loop_fallback"]).
+    initial_fallback_used = False
     # add singularity corners
     if initial_loop_tracing_data.singularity_corner_mapping:
         for corner_vid in initial_loop_tracing_data.singularity_corner_mapping.values():
@@ -384,6 +386,7 @@ def trace_initial_loop_new(V,
                                     initial_loop_tracing_data,
                                     ignore_trace_geometry,
                                     is_last_attempt=is_last_attempt)
+            initial_fallback_used = True
     
     # After all tracing have finished now add the degenerate feature edge vids to the mapping
     # only degenerate feature edges have one vid. Others have at least 2 vids
@@ -407,6 +410,7 @@ def trace_initial_loop_new(V,
     # update regular space data after one loop after tracing
     update_regular_space_data_after_one_loop(connectivity, 
                                              patch_regular_space_data)
+    return initial_fallback_used
 
 
 def trace_initial_loop_with_heuristics(V,

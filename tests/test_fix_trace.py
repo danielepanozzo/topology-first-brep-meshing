@@ -160,3 +160,18 @@ def test_non_initial_fallback_skips_degenerate_halfedges(monkeypatch):
     assert loop_tracing_data.feature_id_to_edge_tracing_data[2][-1] == 5
     assert 0 not in loop_tracing_data.traced_id_set
     assert len(prunes) == 1
+
+
+@pytest.mark.parametrize("heuristic_failed, fallback_used", [([False], False),
+                                                              ([True, False], False),
+                                                              ([True, True], True)])
+def test_initial_loop_new_returns_whether_fallback_ran(monkeypatch, heuristic_failed, fallback_used):
+    # the return value is summary["initial_loop_fallback"]
+    results = iter(heuristic_failed)
+    calls = []
+    monkeypatch.setattr(trace, "trace_initial_loop_with_heuristics", lambda *args, **kwargs: next(results))
+    monkeypatch.setattr(trace, "trace_initial_loop_fallback", lambda *args, **kwargs: calls.append("fallback"))
+    V, conn = square()
+    assert trace.trace_initial_loop_new(V, conn, PatchRegularSpaceData(), LoopTopologyData(), LoopGeometryData(), [],
+                                        InitialLoopTracingData(), ignore_trace_geometry=True) is fallback_used
+    assert calls == (["fallback"] if fallback_used else [])
