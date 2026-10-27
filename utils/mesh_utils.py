@@ -65,15 +65,13 @@ def update_edge_length_and_adjacency_list(V, newv_index, edge, edge_adjacent_fac
         modified_edge_set.add(new_edge1_norm)
         modified_edge_set.add(new_edge2_norm)
 
-    # Update edge lengths for the split edge
+    # Update edge lengths for the split edge: the new vertex is not necessarily the midpoint
     old_len = edge_mapping_to_length.pop(original_edge_norm, None)
     if old_len is None:
         print_if_verbose(f"Warning: edge {original_edge_norm} not found in edge_mapping_to_length.")
-        # If length is missing, compute from V
-        old_len = np.linalg.norm(np.array(V[v0]) - np.array(V[v1]))
-    
-    edge_mapping_to_length[new_edge1_norm] = 0.5 * old_len
-    edge_mapping_to_length[new_edge2_norm] = 0.5 * old_len
+
+    edge_mapping_to_length[new_edge1_norm] = np.linalg.norm(np.array(V[v0]) - np.array(V[newv_index]))
+    edge_mapping_to_length[new_edge2_norm] = np.linalg.norm(np.array(V[v1]) - np.array(V[newv_index]))
 
     # Add lengths for new edges connecting to opposite vertices
     for vid in vids_opposite_to_edge:

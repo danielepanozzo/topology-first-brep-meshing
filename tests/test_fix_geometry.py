@@ -4,6 +4,7 @@ import numpy as np
 import pytest
 
 from operations.align import align_one_segment_of_patches
+from operations.internal_operations import split_edge_in_mesh_overloaded
 from operations.snapping import get_patch_boundary_condition, solve_one_patch_linear_system
 from utils.data_structures import ConnectivityMaintainance, LoopGeometryData, PatchTracingData
 from utils.mesh_utils import adjacency_list, compute_VF, edge_length_mapping
@@ -67,3 +68,13 @@ def test_shared_corner_with_conflicting_targets_raises():
     V, F, geometry, tracing = triangle_loop_patch(p0_on_feature_12=(0.0, 0.0, 1e-6))
     with pytest.raises(ValueError, match="Boundary vertex 0"):
         get_patch_boundary_condition(V, geometry, tracing)
+
+
+@pytest.mark.parametrize("edge", [(0, 1), (1, 0)])
+def test_split_edge_stores_real_lengths_of_both_halves(edge):
+    V, conn = fan_patch([0.0, 10.0], [5.0, 5.0, 0.0])
+    split_edge_in_mesh_overloaded(V, conn, edge, new_point=np.array([1.0, 0.0, 0.0]))
+    lengths = conn.edge_set_to_length_mapping
+    assert lengths[(0, 3)] == pytest.approx(1.0)
+    assert lengths[(1, 3)] == pytest.approx(9.0)
+    assert lengths == pytest.approx(edge_length_mapping(V, conn.F))
