@@ -62,6 +62,8 @@ def dump_oversized_patch_state(V, F, tag="", threshold=None):
         F_arr = np.asarray(F, dtype=np.int64)
         np.savez_compressed(npz_path, V=V_arr, F=F_arr,
                             patch_id=str(patch_id), nv=nv, tag=str(tag))
+    except TimeoutError:  # alarm_timeout's, which mmg_remesh can be running under
+        raise
     except Exception as e:
         print_with_time(
             f"[OVERSIZED PATCH] patch {patch_id} ({tag}) reached {nv} vertices "

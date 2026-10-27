@@ -489,6 +489,8 @@ def embed_loops_one_patch(V_uv: list,
             V_bg_3d = face.surface.sample(np.asarray(V_bg, dtype=float))
             h_bg = per_vertex_edge_length_3d(V_bg_3d, np.asarray(F_bg, dtype=int))
             size_field = (cKDTree(V_bg_3d), h_bg)
+        except TimeoutError:
+            raise  # alarm_timeout fired: let it reach its caller
         except Exception as e:
             print_if_verbose(f"[conflict-refine] size field disabled for this patch: {e}")
     V_cdt, F_cdt, constrained_edges, bbox_edges_by_side = embed_geodesic_segments_in_uv(
@@ -531,6 +533,8 @@ def embed_loops_one_patch(V_uv: list,
                 f"[conflict-refine] CDT refine: {nv0}v/{nf0}f -> "
                 f"{len(V_cdt)}v/{len(F_cdt)}f, "
                 f"{len(constrained_edges)} required edges")
+        except TimeoutError:
+            raise  # alarm_timeout fired: let it reach its caller
         except Exception as e:
             print_if_verbose(f"[conflict-refine] CDT refine pass skipped: {e}")
 

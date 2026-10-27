@@ -1669,6 +1669,8 @@ def refine_cdt_with_size_field(
                     np.asarray(result['triangles'], dtype=int),
                     np.asarray(result['segments'], dtype=int),
                     np.asarray(result['segment_markers'], dtype=int).reshape(-1))
+        except TimeoutError:
+            raise  # alarm_timeout fired: let it reach its caller
         except Exception as e:
             print_if_verbose(
                 f"[conflict-refine] plain CDT rebuild failed ({e}); "
