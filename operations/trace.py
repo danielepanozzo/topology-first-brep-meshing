@@ -344,14 +344,18 @@ def trace_initial_loop_new(V,
         for corner_id, apex_vid in initial_loop_tracing_data.singularity_corner_mapping.items():
             patch_regular_space_data.prohibited_vids_set.add(apex_vid)
         # try heuristic again but with borders prohibited
-        second_heuristic_failed = trace_initial_loop_with_heuristics(V,  
-                                                                    connectivity,
-                                                                    patch_regular_space_data,
-                                                                    loop_topology_data,
-                                                                    loop_geometry_data,
-                                                                    initial_loop_tracing_data,
-                                                                    off_boundary=True,
-                                                                    ignore_trace_geometry=ignore_trace_geometry)
+        try:
+            second_heuristic_failed = trace_initial_loop_with_heuristics(V,
+                                                                        connectivity,
+                                                                        patch_regular_space_data,
+                                                                        loop_topology_data,
+                                                                        loop_geometry_data,
+                                                                        initial_loop_tracing_data,
+                                                                        off_boundary=True,
+                                                                        ignore_trace_geometry=ignore_trace_geometry)
+        except ValueError as e:
+            print_if_verbose(f"Initial loop tracing raised error in second heuristic: {e}")
+            second_heuristic_failed = True
         if second_heuristic_failed:
             print_if_verbose("Initial loop tracing failed again in second heuristic, revert to fall back tracing.")
             # if the result violate the topology we need to do the fall back trace of the initial loop)
