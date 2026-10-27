@@ -4,10 +4,11 @@ import numpy as np
 import pytest
 
 from operations.align import align_one_segment_of_patches
+from operations.consolidate import consolidate, consolidate_one_patch, update_corners
 from operations.internal_operations import split_edge_in_mesh_overloaded
 from operations.snapping import (get_patch_boundary_condition, solve_one_patch_linear_system,
                                  upsample_feature_edge_polyline_V_wrt_arclen)
-from utils.data_structures import ConnectivityMaintainance, LoopGeometryData, PatchTracingData
+from utils.data_structures import ConnectivityMaintainance, LoopGeometryData, LoopTracingData, PatchTracingData
 from utils.mesh_utils import adjacency_list, compute_VF, edge_length_mapping
 
 
@@ -86,3 +87,22 @@ def test_upsample_spaces_points_evenly_on_zero_length_segment():
     patch_V = [np.zeros(3)] * 5  # the traced segment 0-1-2-3-4 has zero length
     out = upsample_feature_edge_polyline_V_wrt_arclen(polyline, [3], [0, 1, 2, 3, 4], patch_V)
     assert np.allclose(out, [[x, 0.0, 0.0] for x in (0.0, 1.0, 2.0, 3.0, 4.0)])
+
+
+@pytest.mark.parametrize("vid", [3, None])
+def test_update_corners_rejects_corner_without_vertex(vid):
+    _, _, old2new, _ = consolidate([np.zeros(3)] * 5, [[0, 1, 2], [0, 2, 4]])  # vertex 3 unused
+    with pytest.raises(ValueError, match="Corner 7"):
+        update_corners({6: 0, 7: vid}, old2new)
+    assert 3 not in old2new
+
+
+def test_consolidate_one_patch_rejects_stale_corner():
+    V = [np.array([float(i), float(i * i), 0.0]) for i in range(5)]
+    F = [[0, 1, 2], [0, 2, 4]]  # vertex 3 unused
+    tracing = PatchTracingData()
+    tracing.initial_loop_tracing_data.loop_tracing_data.feature_id_to_edge_tracing_data = {10: [0, 1]}
+    tracing.initial_loop_tracing_data.loop_tracing_data.corner_id_to_vid = {7: 3}
+    tracing.remaining_loops_tracing_data = {1: LoopTracingData({11: [1, 3, 2]})}
+    with pytest.raises(ValueError, match="Corner 7"):
+        consolidate_one_patch(V, F, tracing)

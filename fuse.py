@@ -55,12 +55,8 @@ def fuse_meshing(patch_to_V, patch_to_connectivity, patch_to_aggregated_tracing_
 
         feature_edge_bnd_index = patch_to_aggregated_tracing_data[patch_id].feature_id_to_traced_vids
         corners_dict = patch_to_aggregated_tracing_data[patch_id].corner_id_to_vid
-        vid_to_corner_dict = {}
-        for corner_id, vid in corners_dict.items():
-            if vid == None:
-                print_if_verbose(f"Corner {corner_id} in patch {patch_id} has no mapped vid.")
-                raise ValueError(f"Fusing: Corner {corner_id} in patch {patch_id} has no mapped vid.")
-            vid_to_corner_dict[vid] = corner_id
+        # every corner maps to a vertex of the patch: consolidate_one_patch raises otherwise
+        vid_to_corner_dict = {vid: corner_id for corner_id, vid in corners_dict.items()}
         patch_to_fids[patch_id] = list(range(len(F_final), len(F_final) + len(F)))
         # remove duplicate vertices 
         local_vid_to_global_vid = {}
