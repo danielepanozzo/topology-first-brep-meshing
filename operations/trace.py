@@ -1101,6 +1101,11 @@ def trace_non_initial_loop_fallback(V,
             still_need_to_treat_ids.append(i)
             previous_loops_to_treat.append(patch_regular_space_data.previous_loops[i])
         print_if_verbose(f"      still need to treat loops {still_need_to_treat_ids} ")
+        if not still_need_to_treat_ids:
+            # every trapped loop is already connected to the boundary: nothing changes
+            # before the retrace, which would fail the same way forever
+            raise ValueError(f"Error: Non initial loop fallback tracing made no progress: trapped loops "
+                             f"{patch_non_initial_loop_treatment_data.loops_need_treatment} are already treated.")
 
 
         for i, previous_loop in enumerate(previous_loops_to_treat):
