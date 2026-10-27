@@ -104,18 +104,36 @@ def write_medit_sol(
 
     The symmetric 2x2 metric tensor at each vertex has 3 components: m11, m12, m22.
     These correspond to E, F, G of the first fundamental form scaled by ``factor``.
+
+    A tensor that is non-finite, not positive definite, or anisotropic beyond
+    1e8:1 (det < 1e-8 * s^2, s = (E + G) / 2; e.g. at a pole or apex) is
+    replaced by the isotropic tensor (s, 0, s) of the same scale, or of the
+    median scale of the valid tensors when s itself is unusable. The test is
+    scale-free, so it does not depend on the model's units or on ``factor``.
     """
     nv = len(EE)
+    E = np.array(EE, dtype=float).reshape(-1)
+    Fm = np.array(FF, dtype=float).reshape(-1)
+    G = np.array(GG, dtype=float).reshape(-1)
+    with np.errstate(invalid="ignore", over="ignore"):
+        s = 0.5 * (E + G)
+        det = E * G - Fm * Fm
+        valid = (np.isfinite(E) & np.isfinite(Fm) & np.isfinite(G)
+                 & (E > 0) & (G > 0) & (det > 0) & (det >= 1e-8 * s * s))
+        bad_scale = ~valid & ~(np.isfinite(s) & (s > 0))
+    if bad_scale.any():
+        if not valid.any():
+            raise ValueError("write_medit_sol: no valid metric tensor to take "
+                             "a fallback scale from")
+        s[bad_scale] = np.median(s[valid])
+    E[~valid], Fm[~valid], G[~valid] = s[~valid], 0.0, s[~valid]
     with open(path, "w") as fh:
         fh.write("MeshVersionFormatted 2\n\n")
         fh.write("Dimension 2\n\n")
         fh.write(f"SolAtVertices\n{nv}\n")
         fh.write("1 3\n")  # 1 solution of type 3 (tensor)
         for i in range(nv):
-            e, f, g = float(EE[i]), float(FF[i]), float(GG[i])
-            det = e * g - f * f
-            if abs(det) < 1e-8 or abs(det) > 1e14:
-                e, f, g = 1.0, 0.0, 1.0
+            e, f, g = float(E[i]), float(Fm[i]), float(G[i])
             fh.write(f"{factor * e:.17g} {factor * f:.17g} {factor * g:.17g}\n")
         fh.write("\nEnd\n\n")
 
