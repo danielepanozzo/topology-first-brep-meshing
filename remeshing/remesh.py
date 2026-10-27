@@ -1,6 +1,6 @@
 """Remeshing stage: converts the forward stage's fused.pkl and runs the wildmeshing-toolkit remeshing app.
 
-usage: python remeshing/remesh.py <output_folder> [--len_rel 0.05] [--app PATH]
+usage: python remeshing/remesh.py <output_folder> [--len_rel 1e-3] [--app PATH]
 
 <output_folder> is the folder main.py wrote fused.pkl into. Writes mesh.msh, features.json and remesh.json
 there (convert_pkl_to_wmtk.py), then remeshed.vtu and remeshed_edges.vtu (remeshing_app).
@@ -20,8 +20,9 @@ BUILT_APP = os.path.join(HERE, "..", "build", "bin", "remeshing_app.exe" if os.n
 def main():
     parser = argparse.ArgumentParser(description="Remesh the forward stage output with wildmeshing-toolkit.")
     parser.add_argument("output_folder", type=str, help="Folder containing fused.pkl from main.py")
-    parser.add_argument("--len_rel", type=float, default=0.05,
-                        help="Target edge length relative to the bounding box diagonal (default: 0.05)")
+    parser.add_argument("--len_rel", type=float, default=1e-3,
+                        help="Target edge length relative to the bounding box diagonal (default: 1e-3, "
+                             "the default --error_rel of main.py)")
     parser.add_argument("--app", type=str, default=None,
                         help="Path to remeshing_app (default: build/bin/remeshing_app, built with CMake)")
     args = parser.parse_args()
