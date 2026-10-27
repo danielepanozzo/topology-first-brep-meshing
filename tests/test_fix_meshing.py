@@ -268,3 +268,15 @@ def test_parallel_success_records_in_face_order(monkeypatch, tmp_path):
     assert checkpoints == [0, 1, 2, 3, 4, 5]
     assert list(result["patches"]) == ["0", "1", "2", "3", "4", "5"]
     assert all(p["status"] == "success" for p in result["patches"].values())
+
+
+def test_default_workers_follows_cpu_affinity(monkeypatch):
+    import os
+    import main
+    monkeypatch.setattr(os, "cpu_count", lambda: 64)
+    monkeypatch.setattr(os, "sched_getaffinity", lambda pid: {0, 3}, raising=False)
+    assert main.default_workers() == 2
+    monkeypatch.delattr(os, "sched_getaffinity")  # e.g. macOS, Windows
+    assert main.default_workers() == 64
+    monkeypatch.setattr(os, "cpu_count", lambda: None)
+    assert main.default_workers() == 1

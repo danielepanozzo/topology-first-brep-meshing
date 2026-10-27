@@ -43,6 +43,13 @@ def default_mmg2d_path():
     return "mmg2d_O3"
 
 
+def default_workers():
+    """CPUs this process may run on (its CPU affinity) where the OS reports it, else the CPU count."""
+    if hasattr(os, "sched_getaffinity"):
+        return len(os.sched_getaffinity(0))
+    return os.cpu_count() or 1
+
+
 def form_per_patch_summary():
     return {
         "success": False,
@@ -162,9 +169,10 @@ def main():
     parser.add_argument("--verbose", type=int, default=0)
     parser.add_argument("--resume", action="store_true",
                         help="Reuse the checkpoints of a previous run in output_folder")
-    parser.add_argument("--workers", type=int, default=os.cpu_count() or 1,
-                        help="Processes for the per-face local step (default: CPU count; 1 = serial). "
-                             "The output does not depend on it.")
+    parser.add_argument("--workers", type=int, default=default_workers(),
+                        help="Processes for the per-face local step (default: the number of CPUs this "
+                             "process may run on, i.e. its CPU affinity, or the CPU count where the OS does "
+                             "not report it; 1 = serial). The output does not depend on it.")
     args = parser.parse_args()
     if args.mmg2d_path is None:
         args.mmg2d_path = default_mmg2d_path()
