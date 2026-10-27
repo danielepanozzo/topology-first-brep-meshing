@@ -66,3 +66,15 @@ def test_fallback_mesh_keeps_its_sub_domains(monkeypatch):
     assert np.array_equal(V_fb, grid_V) and np.array_equal(F_fb, grid_F)
     assert sd_fb == grid_sd
     assert seen["sub_domains"] == grid_sd
+
+
+def test_init_grid_mesh_rejects_two_interior_singularities():
+    from initial_meshing import init_grid_mesh
+
+    def sing(u):
+        return {'first2d': (u, 0.), 'uiso': True, 'point2d': (u, 0.5), 'point3d': (0., 0., 0.)}
+    # one interior singularity is supported: two grids, no unfilled triangle
+    uvs, F, _, sub_domains = init_grid_mesh({'000': sing(0.5)}, 4, 4, 0., 1., 0., 1.)
+    assert len(sub_domains) == 2 and (F != 0).any(axis=1).all()
+    with pytest.raises(ValueError, match="at most one interior singularity"):
+        init_grid_mesh({'000': sing(0.3), '001': sing(0.7)}, 4, 4, 0., 1., 0., 1.)

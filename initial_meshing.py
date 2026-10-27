@@ -171,6 +171,10 @@ def init_grid_mesh(
     sub_domains : list of (ul, uu, vl, vu) tuples
         Bounds of the produced grid(s): two for an interior singularity, one
         otherwise, shrunk by the boundary-singularity strips.
+
+    Raises
+    ------
+    ValueError : more than one interior singularity (not supported).
     """
     stride = num_v_segments + 1
     grid_verts = (num_u_segments + 1) * stride
@@ -226,6 +230,9 @@ def init_grid_mesh(
         n_segs[idx] = ns
 
         if not at_bnd:
+            if non_bnd_idx is not None:
+                raise ValueError(f"init_grid_mesh supports at most one interior singularity, "
+                                 f"found {non_bnd_idx} and {idx}")
             non_bnd_idx = idx
             extra_verts += grid_verts  # second grid
             extra_tris += grid_tris   # second grid (no fans)
