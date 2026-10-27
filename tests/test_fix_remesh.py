@@ -179,3 +179,18 @@ def test_feature_pass_without_spacing_raises(monkeypatch):
     edge_geometry_data = {7: np.array([[0.5, 0.5, 0.0], [0.5, 0.5 + 1e-12, 0.0]])}
     with pytest.raises(ValueError, match="no feature spacing"):
         rb.insert_feature_edges_uv(SQ_V, SQ_F, face, edge_geometry_data)
+
+
+def test_mmg_remesh_rejects_empty_result(monkeypatch):
+    """mmg2d succeeding with no triangles is an explicit ValueError in
+    mmg_remesh, for every caller."""
+    def fake_run(cmd, **kwargs):
+        with open(cmd[cmd.index("-out") + 1], "w") as fh:
+            fh.write("MeshVersionFormatted 2\nDimension 2\nVertices\n1\n0 0 0\n"
+                     "Triangles\n0\nEnd\n")
+        return SimpleNamespace(returncode=0, stdout="", stderr="")
+
+    monkeypatch.setattr(rb.subprocess, "run", fake_run)
+    ones = np.ones(len(SQ_V))
+    with pytest.raises(ValueError, match="no triangles"):
+        mmg_remesh(SQ_V, SQ_F, EE=ones, FF_m=0 * ones, GG=ones)

@@ -404,6 +404,8 @@ def mmg_remesh(
             )
 
         V_out, F_out, tagged_edges_out = read_medit_mesh(mesh_out)
+        if len(F_out) == 0:
+            raise ValueError(f"mmg2d returned no triangles ({len(V_out)} vertices)")
     finally:
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
@@ -868,7 +870,8 @@ def remesh_with_error_and_edge_metric(
     prev_avg_error: Optional[float] = None
     stagnation_count = 0
 
-    # mmg RuntimeError and degenerate-UV-triangle exceptions from
+    # mmg RuntimeError, mmg_remesh's ValueError on an empty result and
+    # degenerate-UV-triangle exceptions from
     # compute_triangle_approximation_errors propagate to the caller;
     # run_initial_meshing_for_face's outer try/except routes them to the
     # insert_feature_edges_uv fallback. Stagnation is not an error: the
