@@ -208,10 +208,13 @@ class ResultLog:
         self._save()
 
     def _update_memory(self):
+        # Peak resident memory of the largest process: this one or a finished child. The faces are meshed in
+        # worker processes, which RUSAGE_SELF leaves out. Not recorded on Windows (no resource module).
         try:
             import resource
             import platform
-            usage = resource.getrusage(resource.RUSAGE_SELF).ru_maxrss
+            usage = max(resource.getrusage(resource.RUSAGE_SELF).ru_maxrss,
+                        resource.getrusage(resource.RUSAGE_CHILDREN).ru_maxrss)
             if platform.system() == "Darwin":
                 mem_mb = usage / (1024 * 1024)
             else:
