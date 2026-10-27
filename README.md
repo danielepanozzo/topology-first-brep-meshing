@@ -14,7 +14,9 @@ The pipeline has two stages:
 
 ## Install
 
-Python 3.11 (abs-hdf5 has no packages for newer versions):
+Python 3.11. The models are read with abs-hdf5, which has packages only for Python 3.9 to 3.11; the pipeline
+uses its 0.2 API (`requirements.txt` pins 0.2.2), which abs-hdf5 1.0 changed (`part.Solid` became
+`part.solids`).
 
 ```
 pip install -r requirements.txt

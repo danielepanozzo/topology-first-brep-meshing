@@ -1,4 +1,5 @@
 # Tested with Python 3.11 and these versions.
+# abs-hdf5: the pipeline uses the 0.2 API (1.0 renamed part.Solid); packages for Python 3.9-3.11 only
 abs-hdf5==0.2.2
 geomdl==5.3.1
 h5py==3.13.0
