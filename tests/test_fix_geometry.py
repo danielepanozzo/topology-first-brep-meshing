@@ -4,7 +4,8 @@ import numpy as np
 import pytest
 
 from operations.align import align_one_segment_of_patches
-from utils.data_structures import ConnectivityMaintainance
+from operations.snapping import get_patch_boundary_condition, solve_one_patch_linear_system
+from utils.data_structures import ConnectivityMaintainance, LoopGeometryData, PatchTracingData
 from utils.mesh_utils import adjacency_list, compute_VF, edge_length_mapping
 
 
@@ -32,3 +33,37 @@ def test_align_snaps_by_normalized_parameter_at_any_scale(scale):
         chain = vids + [3]  # the returned chain leaves out the segment's last vertex
         assert all(b in conn.adj_list[a] for a, b in zip(chain, chain[1:]))
         assert np.allclose([V[v][0] / scale for v in chain], expected)
+
+
+def triangle_loop_patch(p0_on_feature_12=(0.0, 0.0, 0.0)):
+    """Triangle loop of three traced features 10, 11, 12 (corners 0, 1, 2, one inner vertex
+    3, 4, 5 each) around interior vertex 6. Corner 0 sits 0.3 above its target."""
+    P0, P1, P2 = np.array([0.0, 0.0, 0.0]), np.array([1.0, 0.0, 0.0]), np.array([0.0, 1.0, 0.0])
+    V0 = P0 + [0.0, 0.0, 0.3]
+    V = [V0, P1, P2, (V0 + P1) / 2, (P1 + P2) / 2, (P2 + V0) / 2, np.array([0.3, 0.3, 0.0])]
+    F = [[0, 3, 6], [3, 1, 6], [1, 4, 6], [4, 2, 6], [2, 5, 6], [5, 0, 6]]
+    geometry = {0: LoopGeometryData({10: np.array([P0, P1]), 11: np.array([P1, P2]),
+                                     12: np.array([P2, p0_on_feature_12])})}
+    tracing = PatchTracingData()
+    tracing.initial_loop_tracing_data.initial_loop_id = 0
+    loop = tracing.initial_loop_tracing_data.loop_tracing_data
+    loop.feature_id_to_edge_tracing_data = {10: [0, 3, 1], 11: [1, 4, 2], 12: [2, 5, 0]}
+    loop.feature_id_to_segment_upsample_size = {10: [1], 11: [1], 12: [1]}
+    loop.feature_id_to_edge_orientation = {10: True, 11: True, 12: True}
+    return V, F, geometry, tracing
+
+
+def test_shared_corner_is_constrained_once_in_harmonic_solve():
+    V, F, geometry, tracing = triangle_loop_patch()
+    bi, _ = get_patch_boundary_condition(V, geometry, tracing)
+    assert sorted(int(v) for v in bi) == [0, 1, 2, 3, 4, 5]
+    newV = solve_one_patch_linear_system(V, F, tracing, geometry, summary={})
+    # Vertex 6 moves by the mean displacement of its six boundary neighbours:
+    # -0.3 (corner 0) and -0.15 (vertices 3 and 5) in z, i.e. -0.1.
+    assert np.allclose(newV[6], [0.3, 0.3, -0.1])
+
+
+def test_shared_corner_with_conflicting_targets_raises():
+    V, F, geometry, tracing = triangle_loop_patch(p0_on_feature_12=(0.0, 0.0, 1e-6))
+    with pytest.raises(ValueError, match="Boundary vertex 0"):
+        get_patch_boundary_condition(V, geometry, tracing)

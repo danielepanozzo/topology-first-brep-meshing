@@ -102,7 +102,15 @@ def get_patch_boundary_condition(V,
                                         patch_tracing_data.remaining_loops_tracing_data[loop_id], 
                                         patch_bi, 
                                         patch_bp)
-    return patch_bi, patch_bp
+    # A corner is listed by every traced feature ending at it: keep one constraint per vertex,
+    # otherwise the harmonic solve counts the corner's displacement once per copy.
+    patch_bp = np.asarray(patch_bp, dtype=np.float64).reshape(-1, 3)
+    bi, first, inverse = np.unique(np.asarray(patch_bi, dtype=np.int64), return_index=True, return_inverse=True)
+    mismatch = np.any(patch_bp != patch_bp[first][inverse], axis=1)
+    if np.any(mismatch):
+        vid = patch_bi[int(np.argmax(mismatch))]
+        raise ValueError(f"Boundary vertex {vid} has different target positions on different traced feature edges")
+    return bi, patch_bp[first]
 
 def get_loop_boundary_condition(V,
                                 loop_geometry_data,
