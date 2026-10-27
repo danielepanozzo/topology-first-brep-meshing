@@ -88,6 +88,8 @@ def fake_trace(new_vids, record=None):
     def trace_edge(V, conn, rsd, poly, edge_tracing_data, first_pair, second_pair, *args, **kwargs):
         if record is not None:
             record(rsd)
+        if len(poly) == 0:
+            return  # an empty (degenerate) polyline traces nothing
         for pair in (first_pair, second_pair):
             if pair[1] is None:
                 pair[1] = new_vids.pop(0)
@@ -129,3 +131,32 @@ def test_apex_stays_prohibited_after_boundary_hug_revert(monkeypatch):
     # first trace, retry after the revert, last halfedge
     assert apex_prohibited == [True, True, True]
     assert init.loop_tracing_data.feature_id_to_edge_tracing_data[1] == [6, 21, 7]
+
+
+def test_non_initial_fallback_skips_degenerate_halfedges(monkeypatch):
+    # a non-initial loop through an apex: degenerate feature 0 at corner 0, then features
+    # 1 and 2 back to corner 0. Traced, the degenerate halfedge mapped corner 0 to None
+    # (the loop then never closed there) and looked like a sub-loop closure.
+    prunes = []
+
+    def prune(*args):
+        prunes.append(1)
+        return True, []
+
+    monkeypatch.setattr(trace, "regular_space_using_PRSD", lambda *args: None)
+    monkeypatch.setattr(trace, "dijkstra_shortest_path_between_loops", lambda *args: [3, 0])
+    monkeypatch.setattr(trace, "trace_one_feature_edge", fake_trace([5, 6, 20, 7, 21]))
+    monkeypatch.setattr(trace, "prune_after_subloop_closure", prune)
+    V, conn = square()
+    rsd = PatchRegularSpaceData(previous_loops=[[0, 1, 2], [3]])
+    loop = LoopTopologyData(halfedges=[HalfEdge(0, True, True, 0, 0), HalfEdge(1, True, False, 0, 1),
+                                       HalfEdge(2, True, False, 1, 0)])
+    geometry = LoopGeometryData({0: np.empty((0, 3)), 1: np.zeros((3, 3)), 2: np.zeros((3, 3))})
+    loop_tracing_data = LoopTracingData()
+    trace.trace_non_initial_loop_fallback(V, conn, rsd, loop, geometry, loop_tracing_data,
+                                          NonInitialLoopTreatmentData(loops_need_treatment=[1]),
+                                          ignore_trace_geometry=True)
+    assert loop_tracing_data.corner_id_to_vid[0] == 5
+    assert loop_tracing_data.feature_id_to_edge_tracing_data[2][-1] == 5
+    assert 0 not in loop_tracing_data.traced_id_set
+    assert len(prunes) == 1

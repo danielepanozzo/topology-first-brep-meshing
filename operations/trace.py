@@ -1173,6 +1173,8 @@ def trace_non_initial_loop_fallback(V,
         previous_loop_to_treat = []
         visited_corner_ids = set()
         for i, halfedge in enumerate(loop_topology_data.halfedges):
+            if halfedge.is_degenerate:
+                continue
             if halfedge.feature_id in loop_tracing_data.traced_id_set:
                 print_if_verbose(f"    Non initial loop fallback tracing: contain seam edges {halfedge.feature_id}")
                 raise Exception(f"Non initial loop contains seam edge {halfedge.feature_id}")
