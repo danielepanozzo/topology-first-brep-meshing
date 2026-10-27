@@ -971,9 +971,10 @@ def _run_initial_meshing_for_face(
         "center_vertex_id": int}, the center vertex set by
         ``stitch_singularity_fans_3d`` (empty dict when no singularities).
     surface_merged_edges : seam edges from ``build_surface_merged_edges_with_apex``.
-    V_uv_fallback, F_fallback, sub_domains : the UV mesh and sub-domain bounds
-        to pass back as prev_V_uv / prev_F / prev_sub_domains on the next
-        attempt; None on retries (attempt > 0) and on too-small domains.
+    V_uv_fallback, F_fallback, fallback_sub_domains : the UV mesh and its
+        sub-domain bounds to pass back as prev_V_uv / prev_F / prev_sub_domains
+        on the next attempt; None on retries (attempt > 0) and on too-small
+        domains.
     """
     # Keep the caller's target for the posterior re-run below: the curvature
     # cap floors at target/256, so feeding the capped value back in would
@@ -1027,9 +1028,11 @@ def _run_initial_meshing_for_face(
     # Defaults so the except path below has coherent state if any of the
     # pre-embedding steps (initial remesh, sub-domain remesh, seam
     # stitching) raise before V_uv_fallback / F_fallback / final_factor /
-    # sub_domains have been computed.
+    # sub_domains have been computed. fallback_sub_domains always describes
+    # V_uv_fallback / F_fallback: the three are updated together.
     V_uv_fallback = uvs.copy() if isinstance(uvs, np.ndarray) else np.array(uvs)
     F_fallback = F.copy() if isinstance(F, np.ndarray) else np.array(F)
+    fallback_sub_domains = sub_domains_initial
     final_factor = None
     sub_domains = sub_domains_initial
     padding_ratio = None
@@ -1093,6 +1096,7 @@ def _run_initial_meshing_for_face(
             # Save pre-embed mesh for fallback (before list conversion / seam alignment)
             V_uv_fallback = V_uv.copy() if isinstance(V_uv, np.ndarray) else np.array(V_uv)
             F_fallback = F.copy() if isinstance(F, np.ndarray) else np.array(F)
+            fallback_sub_domains = sub_domains
             # convert V_uv and F to list if not yet
             V_uv = V_uv.tolist() if isinstance(V_uv, np.ndarray) else V_uv
             F = F.tolist() if isinstance(F, np.ndarray) else F
@@ -1161,6 +1165,7 @@ def _run_initial_meshing_for_face(
         F_mmg_list = F_mmg.tolist()
         V_uv_fallback = np.array(V_mmg_list)
         F_fallback = np.array(F_mmg_list)
+        fallback_sub_domains = sub_domains
         connectivity = construct_connectivity_data(V_mmg_list, F_mmg_list)
         u_periodic_edges, v_periodic_edges = align_seam_edges_from_tags(
             V_mmg_list, connectivity,
@@ -1204,7 +1209,7 @@ def _run_initial_meshing_for_face(
             print_if_verbose("Non-manifold edges remain after embedding and stitching. ")
         surface_merged_edges = build_surface_merged_edges_with_apex(
             merged_u_sub_chains, merged_v_sub_chains, face, sing_info)
-        return V_3d_list, F_3d, merged_u_vertices, merged_v_vertices, sing_info, surface_merged_edges, V_uv_fallback, F_fallback, sub_domains
+        return V_3d_list, F_3d, merged_u_vertices, merged_v_vertices, sing_info, surface_merged_edges, V_uv_fallback, F_fallback, fallback_sub_domains
     except _PosteriorSingularityDetected as det:
         face.singularities = det.records
         print_if_verbose(f"  re-running face {face.id} with {len(det.records)} "
@@ -1220,10 +1225,10 @@ def _run_initial_meshing_for_face(
         warnings.warn(f"initial meshing failed ({type(e).__name__}: {e}), falling back to insert_feature_edges_uv on pre-embedding mesh")
         V_embedded, F_embedded = insert_feature_edges_uv(np.array(V_uv_fallback), np.array(F_fallback), face, edge_geometry_data, mmg2d_path=mmg2d_path, base_factor=final_factor)
         result = initial_mesh_simple_processing(
-            V_embedded, F_embedded, face, sub_domains,
+            V_embedded, F_embedded, face, fallback_sub_domains,
             u_periodic, v_periodic, sing_info)
-        
-        return (*result, V_uv_fallback, F_fallback, sub_domains)
+
+        return (*result, V_uv_fallback, F_fallback, fallback_sub_domains)
 
 
 def run_initial_meshing_for_face(face, *args, **kwargs):
