@@ -244,7 +244,8 @@ def edit_loops_with_shared_corners(V, F,
                         traced_edge_set.add(create_edge(v_start, v_end))
 
             regular_space_data.prohibited_vids_set = prohibited_vids_set
-            regular_space_data.frozen_edges_set = traced_edge_set
+            # Separate sets: the stitch paths are frozen, not traced
+            regular_space_data.frozen_edges_set = set(traced_edge_set)
             regular_space_data.traced_edge_set = traced_edge_set
 
             separated_corners = trace_and_collapse_between_two_vertices(

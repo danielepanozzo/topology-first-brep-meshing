@@ -78,3 +78,37 @@ def test_init_grid_mesh_rejects_two_interior_singularities():
     assert len(sub_domains) == 2 and (F != 0).any(axis=1).all()
     with pytest.raises(ValueError, match="at most one interior singularity"):
         init_grid_mesh({'000': sing(0.3), '001': sing(0.7)}, 4, 4, 0., 1., 0., 1.)
+
+
+def traced_ptd():
+    """Corner 5 at vid 0 (initial loop) and vid 3 (loop 1); feature 1 traced as 0-1-2."""
+    ptd = PatchTracingData()
+    lt = ptd.initial_loop_tracing_data.loop_tracing_data
+    lt.corner_id_to_vid = {5: 0}
+    lt.feature_id_to_edge_tracing_data = {1: [0, 1, 2]}
+    ptd.remaining_loops_tracing_data = {1: LoopTracingData(corner_id_to_vid={5: 3})}
+    return ptd
+
+
+def test_frozen_and_traced_edge_sets_are_separate_after_construction():
+    from utils.regular_space import construct_patch_regular_space_from_tracing_data
+    rsd = PatchRegularSpaceData()
+    construct_patch_regular_space_from_tracing_data(rsd, traced_ptd())
+    assert rsd.frozen_edges_set == rsd.traced_edge_set == {(0, 1), (1, 2)}
+    rsd.frozen_edges_set.add((2, 3))
+    assert (2, 3) not in rsd.traced_edge_set
+
+
+def test_frozen_and_traced_edge_sets_are_separate_when_stitching(monkeypatch):
+    import run_one_patch
+    seen = []
+
+    def stitch(V, connectivity, corner_id, vids, corners_to_process, rsd, ptd):
+        seen.append(rsd.frozen_edges_set is not rsd.traced_edge_set)
+        rsd.frozen_edges_set.add((2, 3))  # a stitch path is frozen, not traced
+        assert (2, 3) not in rsd.traced_edge_set
+        return None
+    monkeypatch.setattr(run_one_patch, "trace_and_collapse_between_two_vertices", stitch)
+    V = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
+    run_one_patch.edit_loops_with_shared_corners(V, [[0, 1, 2], [0, 2, 3]], PatchRegularSpaceData(), traced_ptd())
+    assert seen == [True]

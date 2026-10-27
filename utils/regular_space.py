@@ -251,5 +251,6 @@ def construct_patch_regular_space_from_tracing_data(regular_space_data,
                 v_end = traced_vids[i+1]
                 traced_edge_set.add(create_edge(v_start, v_end))
     regular_space_data.prohibited_vids_set = prohibited_vids_set
-    regular_space_data.frozen_edges_set = traced_edge_set  # Note: frozen_edges_set with 's'
+    # Separate sets: freezing an edge must not mark it as traced
+    regular_space_data.frozen_edges_set = set(traced_edge_set)  # Note: frozen_edges_set with 's'
     regular_space_data.traced_edge_set = traced_edge_set
