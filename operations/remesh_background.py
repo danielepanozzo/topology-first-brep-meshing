@@ -22,6 +22,7 @@ from typing import Dict, List, Optional, Tuple
 from utils.mesh_utils import compute_VF, create_edge
 from operations.align import _get_boundary_edges
 from utils.print import print_if_verbose, dump_oversized_patch_state
+import utils.config as config
 GEOM_TOL = 1e-10
 # ---------------------------------------------------------------------------
 # Medit .mesh file I/O
@@ -390,7 +391,12 @@ def mmg_remesh(
             cmd += ["-hgrad", str(hgrad)]
         if nosizreq:
             cmd += ["-nosizreq"]
-        result = subprocess.run(cmd, capture_output=True, text=True)
+        try:
+            result = subprocess.run(cmd, capture_output=True, text=True,
+                                    timeout=config.mmg_timeout_seconds)
+        except subprocess.TimeoutExpired:
+            raise RuntimeError(
+                f"mmg2d timed out after {config.mmg_timeout_seconds} s") from None
         if result.returncode != 0:
             raise RuntimeError(
                 f"mmg2d failed (return code {result.returncode}):\n"

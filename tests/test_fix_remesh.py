@@ -1,4 +1,7 @@
 """Regression tests for the remesh_background / embed_geodesic fixes."""
+import os
+import sys
+import time
 from types import SimpleNamespace
 
 import numpy as np
@@ -6,7 +9,8 @@ import pytest
 from scipy.spatial import cKDTree
 
 import operations.embed_geodesic as eg
-from operations.remesh_background import refine_cdt_with_size_field, write_medit_sol
+import utils.config as config
+from operations.remesh_background import mmg_remesh, refine_cdt_with_size_field, write_medit_sol
 
 
 class Plane:
@@ -115,3 +119,18 @@ def test_cdt_refine_pass_lets_timeout_through(monkeypatch):
                    SQ_V, SQ_F, np.array([[0, 2]]), {}),
                refine_cdt_with_size_field=_raise(TimeoutError("alarm")),
                compute_first_fundamental_form=_raise(AssertionError("timeout swallowed")))
+
+
+@pytest.mark.skipif(sys.platform == "win32", reason="the fake mmg2d is a shell script")
+def test_mmg_remesh_times_out(tmp_path, monkeypatch):
+    """A hung mmg2d is killed after config.mmg_timeout_seconds and reported as
+    the RuntimeError the callers handle."""
+    fake = tmp_path / "mmg2d_hangs"
+    fake.write_text("#!/bin/sh\nexec sleep 30\n")
+    os.chmod(fake, 0o755)
+    monkeypatch.setattr(config, "mmg_timeout_seconds", 0.2)
+    ones = np.ones(4)
+    t0 = time.monotonic()
+    with pytest.raises(RuntimeError, match="mmg2d timed out after 0.2 s"):
+        mmg_remesh(SQ_V, SQ_F, EE=ones, FF_m=0 * ones, GG=ones, mmg2d_path=str(fake))
+    assert time.monotonic() - t0 < 5.0
