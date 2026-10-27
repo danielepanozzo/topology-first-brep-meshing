@@ -1,11 +1,8 @@
 # Third-party software
 
-`remeshing/convert_pkl_to_wmtk.py` is copied from wildmeshing-toolkit (MIT, `wildmeshing-toolkit.LICENSE`).
+The pipeline calls two C++ tools, installed by `requirements.txt` and kept under their own licenses:
 
-The two C++ tools the pipeline calls are not part of this repository and keep their own licenses:
-
-- `mmg2d_O3` (forward stage) is Mmg 5.8.0 (LGPL-3.0, https://github.com/MmgTools/mmg), installed with the
-  mmgpy package from `requirements.txt`.
-- `remeshing_app` (remeshing stage) is built from source by `CMakeLists.txt` from wildmeshing-toolkit, branch
-  `fpir` (MIT, https://github.com/wildmeshing/wildmeshing-toolkit), which downloads its dependencies, each under
-  its own license.
+- `mmg2d_O3` (forward stage): Mmg 5.8.0 (LGPL-3.0, https://github.com/MmgTools/mmg), from the mmgpy package.
+- Isotropic remeshing (remeshing stage): wildmeshing-toolkit (MIT,
+  https://github.com/wildmeshing/wildmeshing-toolkit), from its Python package `wildmeshing`, built from
+  source; it downloads its dependencies, each under its own license.

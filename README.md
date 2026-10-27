@@ -9,8 +9,8 @@ The pipeline has two stages:
 1. **Forward stage** (`main.py`, Python): meshes each face in its parameter domain, traces the face's
    boundary edges into the mesh, aligns the shared edges of adjacent faces, and fuses all patches into one
    conforming mesh (`fused.pkl`).
-2. **Remeshing stage** (`remeshing/remesh.py`): remeshes the fused mesh to a target edge length with the
-   wildmeshing-toolkit remeshing app, keeping patches, feature chains and corners.
+2. **Remeshing stage** (`remeshing/remesh.py`): remeshes the fused mesh to a target edge length with
+   wildmeshing-toolkit's isotropic remeshing, keeping patches, feature chains and corners.
 
 ## Install
 
@@ -27,20 +27,16 @@ geodesic tracing between points on faces and edges. It is built from source, so 
 The PyPI release of pygeodesic does not work with this pipeline; `main.py` stops with an ImportError if it
 is installed.
 
-The two C++ tools the pipeline calls:
+The two C++ tools the pipeline calls also come from `requirements.txt`:
 
-- `mmg2d_O3` (forward stage, Mmg 5.8.0) comes with the mmgpy package in `requirements.txt`; `main.py` finds
-  it there. `--mmg2d_path` selects another build.
-- `remeshing_app` (remeshing stage, wildmeshing-toolkit, branch `fpir`) is built from source with the
-  `CMakeLists.txt` at the root of the repository, which downloads wildmeshing-toolkit and its dependencies:
-  ```
-  cmake -S . -B build
-  cmake --build build --config Release
-  ```
-  This needs git, CMake 3.20 or later and a C++17 compiler, plus GMP on Linux (`apt install libgmp-dev`)
-  and macOS (`brew install gmp`); on Windows, wildmeshing-toolkit downloads GMP itself. The build (about 3
-  minutes on a 16-core laptop) puts `remeshing_app` in `build/bin/`, where `remeshing/remesh.py` looks for
-  it; `--app` selects another build. If a download fails, run the build command again: it resumes.
+- `mmg2d_O3` (forward stage, Mmg 5.8.0) comes with the mmgpy package; `main.py` finds it there.
+  `--mmg2d_path` selects another build.
+- The isotropic remeshing (remeshing stage) is wildmeshing-toolkit's Python package `wildmeshing`, which
+  pip builds from source (pinned commit). This needs git, a C++17 compiler (the Xcode command-line tools on
+  macOS, g++ or clang on Linux, Visual Studio on Windows) and GMP on Linux (`apt install libgmp-dev`) and
+  macOS (`brew install gmp`); on Windows the build downloads GMP. CMake comes from PyPI. The build
+  downloads about 30 dependencies and takes several minutes (about 4 on a 16-core laptop), with about 2.5
+  GB of memory per compile job; set `CMAKE_BUILD_PARALLEL_LEVEL` on smaller machines.
 
 ## Run
 
@@ -74,8 +70,14 @@ The forward stage writes `out/<model>/fused.pkl`, a pickled tuple
 - `feature_edge_id_to_vids`: B-rep edge id to its chain of vertex ids
 - `corner_id_to_vids`: B-rep vertex id to its mesh vertex id
 
-plus `result.json` (per-face status and timings). The remeshing stage adds
-`remeshed.vtu` (triangles with a per-triangle patch id) and `remeshed_edges.vtu` (feature chains and corners).
+plus `result.json` (per-face status and timings). The remeshing stage adds:
+
+- `remeshed.vtu`: the remeshed triangles, with cell data `patch_id` (B-rep face id) and point data
+  `vertex_id` (B-rep vertex id of the corner vertices, -1 elsewhere)
+- `remeshed_edges.vtu`: the same points and one line per edge of a feature chain, with cell data `edge_id`
+  (B-rep edge id); zero-length B-rep edges are only their corner vertex
+- `remeshed_report.json`: statistics of the remeshing, and `remesh_input.msh` / `remesh_features.json`, its
+  input
 
 ## Evaluation scripts
 
@@ -101,8 +103,8 @@ python parse_results.py out
 pytest tests
 ```
 
-CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and Windows, builds `remeshing_app`, and
-runs both stages, the topology check and the evaluation scripts on every model in `data/simple`.
+CI (`.github/workflows/ci.yml`) runs the tests on Linux, macOS and Windows, and both stages, the topology
+check and the evaluation scripts on every model in `data/simple`.
 
 ## License
 

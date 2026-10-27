@@ -14,6 +14,9 @@ pygeodesic @ git+https://github.com/yunfanzhou/pygeodesic.git@7ce3fd80c65460aff1
 pyvista==0.45.0
 scipy==1.15.0
 triangle==20250106
+# wildmeshing-toolkit's isotropic remeshing (remeshing stage), built from source: wildmeshing-toolkit pull
+# request #1123, branch danielepanozzo/isotropic-remeshing-brep
+wildmeshing @ git+https://github.com/wildmeshing/wildmeshing-toolkit.git@7283086619c5a9fc90ba032540ee9ebfa1486a4d
 # evaluation scripts (get_distance.py, get_metrics.py, plot_metrics.py) and tests
 pandas==2.3.3
 plotly==6.6.0

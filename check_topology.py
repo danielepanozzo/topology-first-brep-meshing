@@ -156,11 +156,11 @@ def load_remeshed(folder):
 
     edges = meshio.read(os.path.join(folder, "remeshed_edges.vtu"))
     corner2vid = {}
-    for vid, c in enumerate(np.asarray(edges.point_data["corner_id"]).ravel()):
+    for vid, c in enumerate(np.asarray(edges.point_data["vertex_id"]).ravel()):
         if c >= 0:
-            corner2vid[int(c) - 1] = vid  # the remesher writes corner id + 1
+            corner2vid[int(c)] = vid
     lines = np.vstack([cb.data for cb in edges.cells if cb.type == "line"])
-    curve_ids = np.concatenate([np.asarray(a).ravel() for a in edges.cell_data_dict["curve_id"].values()])
+    curve_ids = np.concatenate([np.asarray(a).ravel() for a in edges.cell_data_dict["edge_id"].values()])
     edge2pairs = defaultdict(list)
     for (a, b), cid in zip(lines, curve_ids):
         if cid >= 0:

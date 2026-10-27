@@ -20,7 +20,7 @@ jobs:
   pipeline:
     name: ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    # a cold build of remeshing_app takes most of this; later runs take it from the cache
+    # a cold build of the wildmeshing package takes most of this; later runs take its wheel from the pip cache
     timeout-minutes: 150
     strategy:
       fail-fast: false
@@ -39,21 +39,7 @@ jobs:
           cache: pip
           cache-dependency-path: requirements.txt
 
-      - name: Install Python dependencies
-        run: python -m pip install -r requirements.txt
-
-      - name: Unit tests
-        run: python -m pytest tests -v
-
-      # remeshing_app: built with CMakeLists.txt, cached until the build files change
-      - name: Cache remeshing_app
-        id: cache-app
-        uses: actions/cache@v4
-        with:
-          path: remeshing-app
-          key: remeshing-app-${{ runner.os }}-${{ runner.arch }}-${{ hashFiles('CMakeLists.txt', 'cmake/**') }}
-
-      # also on a cache hit: remeshing_app links GMP dynamically
+      # the wildmeshing package (remeshing stage) links GMP; on Windows its build downloads it
       - name: Install GMP
         if: runner.os != 'Windows'
         run: |
@@ -63,27 +49,24 @@ jobs:
             brew list gmp > /dev/null 2>&1 || brew install gmp
           fi
 
-      - name: Build remeshing_app
-        if: steps.cache-app.outputs.cache-hit != 'true'
+      - name: Prepare the build of the wildmeshing package
         run: |
-          # short build path: MSVC fails on the deepest paths of the dependencies otherwise
-          build="${RUNNER_TEMP//\\//}/b"
-          cmake -S . -B "$build"
-          # the build downloads its dependencies (Eigen from gitlab.com, which drops clones under
-          # load); a failed build resumes, so retry
-          for attempt in 1 2 3; do
-            cmake --build "$build" --config Release && break
-            [ $attempt = 3 ] && exit 1
-            echo "::warning::build attempt $attempt failed, retrying"
-            sleep 60
-          done
-          mkdir -p remeshing-app
-          cp "$build"/bin/* remeshing-app/
-          ls -l remeshing-app
+          if [ "$RUNNER_OS" = Windows ]; then
+            # its dependencies nest deep enough to hit MAX_PATH under the default temp directory
+            git config --global core.longpaths true
+            mkdir -p /d/t && echo "TMP=D:\\t" >> "$GITHUB_ENV" && echo "TEMP=D:\\t" >> "$GITHUB_ENV"
+          fi
+          # about 2.5 GB per compile job; the macOS runners have 7 GB
+          if [ "$RUNNER_OS" = macOS ]; then echo "CMAKE_BUILD_PARALLEL_LEVEL=2" >> "$GITHUB_ENV"; fi
+
+      - name: Install Python dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Unit tests
+        run: python -m pytest tests -v
 
       - name: Mesh data/simple
         run: |
-          app=$(ls remeshing-app/remeshing_app*)
           failed=()
           for f in data/simple/*.hdf5; do
             m=$(basename "$f" .hdf5)
@@ -91,7 +74,7 @@ jobs:
             ok=1
             python main.py "$f" "out/$m" --error_rel 0.05 || ok=0
             if [ $ok = 1 ]; then
-              python remeshing/remesh.py "out/$m" --len_rel 0.05 --app "$app" || ok=0
+              python remeshing/remesh.py "out/$m" --len_rel 0.05 || ok=0
             fi
             if [ $ok = 1 ]; then
               python check_topology.py "$f" "out/$m" || ok=0

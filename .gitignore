@@ -16,7 +16,6 @@ metaprogramming/
 
 # outputs of the README commands and the oversized-patch guard
 out/
-build/
 oversized_patch_dumps/
 __pycache__/
 .pytest_cache/
@@ -26,5 +25,4 @@ __pycache__/
 
 # packaging files that the patterns above would skip
 !requirements.txt
-!CMakeLists.txt
 !third_party/*
