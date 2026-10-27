@@ -1029,6 +1029,11 @@ def insert_feature_edges_uv(
     # Use half the median 3D feature-point spacing so consecutive points land
     # in distinct triangles.  Median (not mean) is robust to the highly
     # heterogeneous spacings.
+    if not edge_pt_spacings:
+        raise ValueError(
+            "insert_feature_edges_uv: every feature-edge segment of the face is "
+            f"shorter than GEOM_TOL = {GEOM_TOL:g}, so there is no feature "
+            "spacing to size the mesh from")
     L_target = float(np.median(edge_pt_spacings))
     base_factor = 1.0 / (L_target ** 2)
     # ------------------------------------------------------------------

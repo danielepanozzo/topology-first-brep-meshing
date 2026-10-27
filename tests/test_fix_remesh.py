@@ -166,3 +166,16 @@ def test_remesh_returns_factor_of_returned_mesh(monkeypatch, avg_error, max_iter
     V, F, factor = rb.remesh_with_error_and_edge_metric(
         None, SQ_V, SQ_F, target_error=0.1, max_iterations=max_iterations)
     assert factor == used[-1]
+
+
+def test_feature_pass_without_spacing_raises(monkeypatch):
+    """All feature segments shorter than GEOM_TOL: a clear ValueError, not a
+    NaN mesh size sent to mmg."""
+    ones = np.ones(len(SQ_V))
+    monkeypatch.setattr(rb, "compute_first_fundamental_form", lambda *a: (ones, 0 * ones, ones))
+    monkeypatch.setattr(rb, "mmg_remesh", _raise(AssertionError("NaN size reached mmg")))
+    loop = SimpleNamespace(halfedges=[SimpleNamespace(edge=SimpleNamespace(id=7))])
+    face = SimpleNamespace(loops=[loop], surface=Plane())
+    edge_geometry_data = {7: np.array([[0.5, 0.5, 0.0], [0.5, 0.5 + 1e-12, 0.0]])}
+    with pytest.raises(ValueError, match="no feature spacing"):
+        rb.insert_feature_edges_uv(SQ_V, SQ_F, face, edge_geometry_data)
