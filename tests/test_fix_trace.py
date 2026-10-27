@@ -56,3 +56,15 @@ def test_non_initial_fallback_stops_when_trapped_loops_repeat(monkeypatch):
         trace.trace_non_initial_loop_fallback(V, conn, rsd, loop, LoopGeometryData({5: np.zeros((3, 3))}),
                                               LoopTracingData(), treatment, ignore_trace_geometry=True)
     assert len(prunes) == 1
+
+
+def test_initial_fallback_without_disk_component_raises_value_error():
+    # no component is bounded by traced edges only: after_trace_initial_loop_fallback
+    # returns False instead of an IndexError, and the fallback raises ValueError
+    V, conn = square()
+    F = [face[:] for face in conn.F]
+    assert trace.after_trace_initial_loop_fallback(conn, PatchRegularSpaceData(traced_edge_set={(0, 1)})) is False
+    assert conn.F == F
+    with pytest.raises(ValueError, match="initial loop fallback tracing failed"):
+        trace.trace_initial_loop_fallback(V, conn, PatchRegularSpaceData(), LoopTopologyData(), LoopGeometryData(), [],
+                                          InitialLoopTracingData(), ignore_trace_geometry=True)

@@ -1480,6 +1480,9 @@ def after_trace_initial_loop_fallback(connectivity,
     disk_component = components_fullfill_2_3(F_np,
                                               patch_regular_space_data.traced_edge_set,
                                               cc)
+    if len(disk_component) == 0:
+        print_if_verbose("After tracing initial loop fallback, no component is bounded by traced edges only.")
+        return False
     # If there's more than one component that fulfills the conditions, we want the one the does not contain the untraceable edges/vertices
     if len(disk_component) > 1:
         frozen_vids_set = set[int]()
