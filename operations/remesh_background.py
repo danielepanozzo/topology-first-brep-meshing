@@ -846,7 +846,8 @@ def remesh_with_error_and_edge_metric(
     -------
     V_out : (nv_out, 2) remeshed UV vertices.
     F_out : (nf_out, 3) remeshed triangles (0-based).
-    factor_out : final tensor scaling factor used by MMG.
+    factor_out : tensor scaling factor of the MMG pass that produced
+        V_out, F_out.
     """
     # Stagnation thresholds (rationale, not tunables):
     #   STAGNATION_RATIO = 0.9 — an iteration that fails to reduce avg_error
@@ -862,6 +863,7 @@ def remesh_with_error_and_edge_metric(
     STAGNATION_LIMIT = 5
 
     factor = compute_mmg_factor(surface, V_uv)
+    mesh_factor = factor  # factor of the mmg pass that produced V_cur, F_cur
     V_cur, F_cur = V_uv, F
     prev_avg_error: Optional[float] = None
     stagnation_count = 0
@@ -874,6 +876,7 @@ def remesh_with_error_and_edge_metric(
     for it in range(max_iterations):
         EE, FF_m, GG = compute_first_fundamental_form(surface, V_cur)
         print_if_verbose(f"\n ---Initial remesh Iteration {it} ---")
+        mesh_factor = factor
         V_cur, F_cur, _ = mmg_remesh(
             V_cur, F_cur,
             EE=EE, FF_m=FF_m, GG=GG,
@@ -894,7 +897,7 @@ def remesh_with_error_and_edge_metric(
         if prev_avg_error is not None and avg_error >= STAGNATION_RATIO * prev_avg_error:
             stagnation_count += 1
             if stagnation_count >= STAGNATION_LIMIT:
-                return V_cur, F_cur, factor
+                return V_cur, F_cur, mesh_factor
         else:
             stagnation_count = 0
         prev_avg_error = avg_error
@@ -916,11 +919,11 @@ def remesh_with_error_and_edge_metric(
             print_if_verbose(f"  error {avg_error:.3e} << target {target_error:.3e}, "
                              f"scaling factor down by {ratio:.2e}x -> factor={factor:.3e}")
             if factor < 1e-8:
-                return V_cur, F_cur, factor/ratio
+                return V_cur, F_cur, mesh_factor
         else:
             break
 
-    return V_cur, F_cur, factor
+    return V_cur, F_cur, mesh_factor
 
 
 # ---------------------------------------------------------------------------

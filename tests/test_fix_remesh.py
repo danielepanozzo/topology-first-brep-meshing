@@ -9,6 +9,7 @@ import pytest
 from scipy.spatial import cKDTree
 
 import operations.embed_geodesic as eg
+import operations.remesh_background as rb
 import utils.config as config
 from operations.remesh_background import mmg_remesh, refine_cdt_with_size_field, write_medit_sol
 
@@ -134,3 +135,34 @@ def test_mmg_remesh_times_out(tmp_path, monkeypatch):
     with pytest.raises(RuntimeError, match="mmg2d timed out after 0.2 s"):
         mmg_remesh(SQ_V, SQ_F, EE=ones, FF_m=0 * ones, GG=ones, mmg2d_path=str(fake))
     assert time.monotonic() - t0 < 5.0
+
+
+def _fake_remesh_loop(monkeypatch, avg_error):
+    """Stub the mmg passes of remesh_with_error_and_edge_metric (mesh unchanged,
+    constant avg triangle error); returns the list of factors passed to mmg."""
+    used = []
+
+    def fake_mmg(V, F, metric_factor=1.0, **kwargs):
+        used.append(metric_factor)
+        return V, F, {}
+
+    ones = np.ones(len(SQ_V))
+    monkeypatch.setattr(rb, "compute_mmg_factor", lambda *a: 1.0)
+    monkeypatch.setattr(rb, "compute_first_fundamental_form", lambda *a: (ones, 0 * ones, ones))
+    monkeypatch.setattr(rb, "mmg_remesh", fake_mmg)
+    monkeypatch.setattr(rb, "compute_triangle_approximation_errors",
+                        lambda s, V, F: np.full(len(F), avg_error))
+    monkeypatch.setattr(rb, "compute_edge_length_metric", lambda V, F, s: np.ones((len(F), 3)))
+    return used
+
+
+@pytest.mark.parametrize("avg_error, max_iterations", [
+    (1.0, 3),     # always too coarse: max_iterations runs out right after a rescale
+    (0.5, 9),     # stagnation (STAGNATION_LIMIT) ends the loop
+    (1e-4, 10),   # over-refined until the factor drops below 1e-8
+])
+def test_remesh_returns_factor_of_returned_mesh(monkeypatch, avg_error, max_iterations):
+    used = _fake_remesh_loop(monkeypatch, avg_error)
+    V, F, factor = rb.remesh_with_error_and_edge_metric(
+        None, SQ_V, SQ_F, target_error=0.1, max_iterations=max_iterations)
+    assert factor == used[-1]
