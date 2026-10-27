@@ -67,7 +67,7 @@ ExternalProject_Add(wmtk
         -DHDF5_ENABLE_SZIP_SUPPORT=OFF
         -DFETCHCONTENT_SOURCE_DIR_EIGEN=${CMAKE_BINARY_DIR}/eigen-src
         -DCPM_eigen_SOURCE=${CMAKE_BINARY_DIR}/eigen-src
-        -DCMAKE_PROJECT_WildMeshingToolkit_INCLUDE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/wmtk_no_test_data.cmake
+        -DCMAKE_PROJECT_WildMeshingToolkit_INCLUDE=${CMAKE_CURRENT_SOURCE_DIR}/cmake/wmtk_project_include.cmake
         ${gmp_args}
     BUILD_COMMAND ${CMAKE_COMMAND} --build <BINARY_DIR> --config Release --target remeshing_app --parallel ${jobs}
     INSTALL_COMMAND ${CMAKE_COMMAND} -DSRC=<BINARY_DIR>/app -DDST=${CMAKE_BINARY_DIR}/bin
