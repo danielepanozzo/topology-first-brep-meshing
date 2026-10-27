@@ -120,6 +120,9 @@ def trace_and_collapse_between_two_vertices(V,
                                                     tracing_prohibited_vids_set=regular_space_data.prohibited_vids_set,
                                                     adj_list=connectivity.adj_list,
                                                     edge_lengths=connectivity.edge_set_to_length_mapping)
+        if not path_vids or not np.isfinite(distance):
+            # Nothing to collapse: the corner would be recorded as stitched while its vids stay apart
+            raise ValueError(f"No path from apex vid {apex_vid} to vid {v_end} to stitch corner {corner_id}")
 
         # Freeze the path edges
         path_edges = set()
