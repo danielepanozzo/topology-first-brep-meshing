@@ -1,8 +1,8 @@
 name: CI
 
+# every branch, so forks get CI on their branches before opening a pull request
 on:
   push:
-    branches: [main]
   pull_request:
   workflow_dispatch:
 
