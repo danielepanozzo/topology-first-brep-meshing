@@ -64,10 +64,12 @@ def mesh_one_face(face, edge_geometry_data, all_corners, target_error, mmg2d_pat
     """Initial meshing + local step of one face with up to ATTEMPT_MAX attempts.
 
     Returns a dict: ok, patch_id, duration, attempts, and V/connectivity/tracing/summary on
-    success or error on failure. target_error is the model's; retries halve it for this face only.
-    An attempt that raises an Exception is retried, and the face fails after the last one.
-    MemoryError is re-raised, and CollapsedInteriorIsoLineError (a BaseException) passes
-    through: both end the run.
+    success or error on failure. target_error is the model's; only the first attempt remeshes
+    with it. A retry (attempt k > 0) runs no mmg: it refines the UV mesh saved by the first
+    attempt (or the initial grid if there is none) with k levels of igl.upsample, then runs the
+    local step again on it. An attempt that raises an Exception is retried, and the face fails
+    after the last one. MemoryError is re-raised, and CollapsedInteriorIsoLineError (a
+    BaseException) passes through: both end the run.
     """
     patch_id = face.id
     config.current_patch_id = patch_id  # labels oversized-patch dumps
@@ -75,7 +77,6 @@ def mesh_one_face(face, edge_geometry_data, all_corners, target_error, mmg2d_pat
     patch_summary = form_per_patch_summary()
     prev_V_uv = prev_F = prev_sub_domains = None
     for attempt in range(ATTEMPT_MAX):
-        target_error = target_error * (0.5 ** attempt)
         try:
             V_3d, F, u_periodic_edges, v_periodic_edges, sing_info, surface_merged_edges, fallback_V_uv, fallback_F, fallback_sub_domains = run_initial_meshing_for_face(
                 face,

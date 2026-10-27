@@ -115,7 +115,7 @@ def test_frozen_and_traced_edge_sets_are_separate_when_stitching(monkeypatch):
 
 
 class FakeFace:
-    id = 7
+    id, surface = 7, None
 
 
 def failing_initial_meshing(monkeypatch, exc):
@@ -147,3 +147,32 @@ def test_mesh_one_face_does_not_retry_fatal_errors(monkeypatch, exc_type):
     with pytest.raises(exc_class):
         main.mesh_one_face(FakeFace(), {}, None, 0.1, "mmg2d_O3", 1.0)
     assert calls == [0]
+
+
+def test_mesh_one_face_passes_the_model_target_to_every_attempt(monkeypatch):
+    import main
+    targets = []
+
+    def run_initial_meshing_for_face(face, *args, target_error, **kwargs):
+        targets.append(target_error)
+        raise ValueError("retry")
+    monkeypatch.setattr(main, "run_initial_meshing_for_face", run_initial_meshing_for_face)
+    main.mesh_one_face(FakeFace(), {}, None, 0.1, "mmg2d_O3", 1.0)
+    assert targets == [0.1] * main.ATTEMPT_MAX
+
+
+def test_retry_skips_the_curvature_cap(monkeypatch):
+    import numpy as np
+    import initial_meshing as im
+    V = np.array([[0., 0.], [1., 0.], [1., 1.], [0., 1.]])
+    F = np.array([[0, 1, 2], [0, 2, 3]])
+
+    def curvature_capped_error(surface, e):
+        raise AssertionError("curvature cap computed on a retry")
+    monkeypatch.setattr(im, "curvature_capped_error", curvature_capped_error)
+    monkeypatch.setattr(im, "create_initial_mesh", lambda face, **kw: (V, F, {}, False, [(0., 1., 0., 1.)]))
+    monkeypatch.setattr(im, "detect_periodicity", lambda *a: (False, False))
+    monkeypatch.setattr(im, "initial_mesh_simple_processing", lambda V, F, *rest: (len(V),) + (None,) * 5)
+    out = im._run_initial_meshing_for_face(FakeFace(), {}, target_error=0.1, attempt=1,
+                                           prev_V_uv=V, prev_F=F, prev_sub_domains=[(0., 1., 0., 1.)])
+    assert out[0] == 9 and out[6:] == (None, None, None)  # one upsample level of the 4-vertex mesh

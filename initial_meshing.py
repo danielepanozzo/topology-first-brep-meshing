@@ -959,6 +959,8 @@ def _run_initial_meshing_for_face(
     face : abs Face object.
     edge_geometry_data : dict mapping edge id -> (nv, 3) 3-D polyline array,
         as returned by ``create_feature_edge_geometry_data``.
+    target_error : absolute error target of the mmg remeshing; not used on
+        retries (attempt > 0).
     mmg2d_path : path to the mmg2d executable.
     num_u_segments, num_v_segments : initial grid resolution.
     prev_V_uv, prev_F : UV mesh from previous attempt, used on retry
@@ -991,7 +993,8 @@ def _run_initial_meshing_for_face(
     # Curvature cap: the effective error target may not exceed a fraction of
     # the surface's minimum principal-curvature radius, or the background mesh
     # leaves the surface's reach and projections of nearby features alias.
-    if target_error is not None:
+    # Retries (attempt > 0) run no mmg and do not use the target.
+    if target_error is not None and attempt == 0:
         capped = curvature_capped_error(face.surface, target_error)
         if capped < target_error:
             print_if_verbose(
