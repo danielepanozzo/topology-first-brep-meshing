@@ -112,3 +112,38 @@ def test_frozen_and_traced_edge_sets_are_separate_when_stitching(monkeypatch):
     V = [[0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]]
     run_one_patch.edit_loops_with_shared_corners(V, [[0, 1, 2], [0, 2, 3]], PatchRegularSpaceData(), traced_ptd())
     assert seen == [True]
+
+
+class FakeFace:
+    id = 7
+
+
+def failing_initial_meshing(monkeypatch, exc):
+    import main
+    calls = []
+
+    def run_initial_meshing_for_face(face, *args, attempt, **kwargs):
+        calls.append(attempt)
+        raise exc
+    monkeypatch.setattr(main, "run_initial_meshing_for_face", run_initial_meshing_for_face)
+    return main, calls
+
+
+@pytest.mark.parametrize("exc", [RuntimeError("mmg failed"), AssertionError(), IndexError("out of range"),
+                                 Exception("No progress made"), ValueError("not edge manifold")])
+def test_mesh_one_face_retries_any_exception(monkeypatch, exc):
+    main, calls = failing_initial_meshing(monkeypatch, exc)
+    r = main.mesh_one_face(FakeFace(), {}, None, 0.1, "mmg2d_O3", 1.0)
+    assert calls == list(range(main.ATTEMPT_MAX))
+    assert not r["ok"] and r["patch_id"] == 7 and r["attempts"] == main.ATTEMPT_MAX
+    assert r["error"] == (str(exc) if isinstance(exc, ValueError) else f"{type(exc).__name__}: {exc}")
+
+
+@pytest.mark.parametrize("exc_type", ["MemoryError", "CollapsedInteriorIsoLineError"])
+def test_mesh_one_face_does_not_retry_fatal_errors(monkeypatch, exc_type):
+    import initial_meshing
+    exc_class = MemoryError if exc_type == "MemoryError" else initial_meshing.CollapsedInteriorIsoLineError
+    main, calls = failing_initial_meshing(monkeypatch, exc_class("fatal"))
+    with pytest.raises(exc_class):
+        main.mesh_one_face(FakeFace(), {}, None, 0.1, "mmg2d_O3", 1.0)
+    assert calls == [0]
