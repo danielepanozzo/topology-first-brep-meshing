@@ -107,3 +107,25 @@ def test_apex_check_runs_when_boundary_is_prohibited(monkeypatch):
     topo, geometry, init = cone_initial_loop({0: 11})
     with pytest.raises(ValueError, match=r"apex corner 0 \(vid 7\) is not the end"):
         trace.trace_initial_loop_with_heuristics(V, conn, rsd, topo, geometry, init, off_boundary=True)
+
+
+def test_apex_stays_prohibited_after_boundary_hug_revert(monkeypatch):
+    # the first halfedge ends at the apex 7 and hugs the boundary: reverting it must not
+    # release the apex, or the retried trace could pass through it
+    apex_prohibited = []
+    hug = iter([True])
+    monkeypatch.setattr(trace, "trace_one_feature_edge",
+                        fake_trace([5, 20, 6, 21, 22], record=lambda rsd: apex_prohibited.append(7 in rsd.prohibited_vids_set)))
+    monkeypatch.setattr(trace, "detect_boundary_hug_after_halfedge", lambda *args: next(hug, False))
+    monkeypatch.setattr(trace, "after_trace_initial_loop", lambda *args: True)
+    V, conn = square()
+    rsd = PatchRegularSpaceData()
+    topo = LoopTopologyData(halfedges=[HalfEdge(1, True, False, 1, 0), HalfEdge(0, True, True, 0, 0),
+                                       HalfEdge(2, True, False, 0, 1)])
+    geometry = LoopGeometryData({1: np.zeros((3, 3)), 0: np.empty((0, 3)), 2: np.zeros((3, 3))})
+    init = InitialLoopTracingData(initial_loop_id=0, singularity_corner_mapping={0: 7})
+    init.loop_tracing_data.corner_id_to_vid = {0: 7}
+    assert trace.trace_initial_loop_with_heuristics(V, conn, rsd, topo, geometry, init, off_boundary=True) is False
+    # first trace, retry after the revert, last halfedge
+    assert apex_prohibited == [True, True, True]
+    assert init.loop_tracing_data.feature_id_to_edge_tracing_data[1] == [6, 21, 7]

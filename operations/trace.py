@@ -533,6 +533,10 @@ def trace_initial_loop_with_heuristics(V,
                                       initial_loop_tracing_data.loop_tracing_data,
                                       halfedge,
                                       snapshot)
+            # the revert releases a singular apex that no other traced edge touches;
+            # keep it non-traceable so the retry cannot pass through it
+            for apex_vid in initial_loop_tracing_data.singularity_corner_mapping.values():
+                patch_regular_space_data.prohibited_vids_set.add(apex_vid)
             added_vids, added_edges = temporarily_prohibit_boundary(connectivity,
                                                                     patch_regular_space_data)
             try:
