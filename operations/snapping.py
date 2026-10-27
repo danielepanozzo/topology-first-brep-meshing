@@ -54,7 +54,7 @@ def upsample_feature_edge_polyline_V_wrt_arclen(feature_edge_to_polyline_V,
             # get the ratio of the edge length to the segment length
             cummulative_edge_length += edge_length
             if not traced_polyline_segment_length[i] > 0:
-                t = (j + 1) / len(feature_edge_per_segment_vertex_cnt)
+                t = (j + 1) / len(edge_lengths_per_segment_feature_edge[i])
             else:
                 t = cummulative_edge_length / traced_polyline_segment_length[i]
             # get the position on the edge

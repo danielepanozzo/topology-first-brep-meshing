@@ -5,7 +5,8 @@ import pytest
 
 from operations.align import align_one_segment_of_patches
 from operations.internal_operations import split_edge_in_mesh_overloaded
-from operations.snapping import get_patch_boundary_condition, solve_one_patch_linear_system
+from operations.snapping import (get_patch_boundary_condition, solve_one_patch_linear_system,
+                                 upsample_feature_edge_polyline_V_wrt_arclen)
 from utils.data_structures import ConnectivityMaintainance, LoopGeometryData, PatchTracingData
 from utils.mesh_utils import adjacency_list, compute_VF, edge_length_mapping
 
@@ -78,3 +79,10 @@ def test_split_edge_stores_real_lengths_of_both_halves(edge):
     assert lengths[(0, 3)] == pytest.approx(1.0)
     assert lengths[(1, 3)] == pytest.approx(9.0)
     assert lengths == pytest.approx(edge_length_mapping(V, conn.F))
+
+
+def test_upsample_spaces_points_evenly_on_zero_length_segment():
+    polyline = np.array([[0.0, 0.0, 0.0], [4.0, 0.0, 0.0]])
+    patch_V = [np.zeros(3)] * 5  # the traced segment 0-1-2-3-4 has zero length
+    out = upsample_feature_edge_polyline_V_wrt_arclen(polyline, [3], [0, 1, 2, 3, 4], patch_V)
+    assert np.allclose(out, [[x, 0.0, 0.0] for x in (0.0, 1.0, 2.0, 3.0, 4.0)])
