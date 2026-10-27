@@ -144,7 +144,6 @@ def align_one_segment_of_patches(Vs,
         segments: list of list of vids corresponding to same edge segment embedded on different patches.
     '''
     ALIGN_SNAP_TOL_REL = 1e-2  # tolerance in normalized [0,1] parameter space for snapping cross-segment vertices
-    ALIGN_SNAP_TOL = 1e2222
     # get cumulated lengths for all segments
     norm_param_list = []
     for i in range(len(segments)):
@@ -152,7 +151,6 @@ def align_one_segment_of_patches(Vs,
         total_length = cum_length[-1]
         norm_param = [x / total_length for k, x in enumerate(cum_length) if k != 0 and k != len(cum_length) - 1]
         norm_param_list.append(norm_param)
-        ALIGN_SNAP_TOL =  min(total_length * ALIGN_SNAP_TOL_REL, ALIGN_SNAP_TOL)
 
     # flat sorted list of (norm_param, segment_index, vid_index_in_norm_param_list)
     flat = [(norm_param_list[i][j], i, j)
@@ -168,7 +166,7 @@ def align_one_segment_of_patches(Vs,
         current_segs = {flat[0][1]}
         for k in range(1, len(flat)):
             p, seg_i, vid_j = flat[k]
-            if p - current_group[0][0] <= ALIGN_SNAP_TOL and seg_i not in current_segs:
+            if p - current_group[0][0] <= ALIGN_SNAP_TOL_REL and seg_i not in current_segs:
                 current_group.append(flat[k])
                 current_segs.add(seg_i)
             else:
