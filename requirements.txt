@@ -15,8 +15,8 @@ pyvista==0.45.0
 scipy==1.15.0
 triangle==20250106
 # wildmeshing-toolkit's isotropic remeshing (remeshing stage), built from source: wildmeshing-toolkit pull
-# request #1123, branch danielepanozzo/isotropic-remeshing-brep
-wildmeshing @ git+https://github.com/wildmeshing/wildmeshing-toolkit.git@8c2808e5f46a06ec18286b6b8b75f12902833177
+# request #1137 on its main, branch danielepanozzo/isotropic-remeshing-memory-fields
+wildmeshing @ git+https://github.com/wildmeshing/wildmeshing-toolkit.git@f27c9a177c38a59d964a7352d19b8ba8f4174760
 # evaluation scripts (get_distance.py, get_metrics.py, plot_metrics.py) and tests
 pandas==2.3.3
 plotly==6.6.0

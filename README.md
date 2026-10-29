@@ -10,7 +10,7 @@ The pipeline has two stages:
    boundary edges into the mesh, aligns the shared edges of adjacent faces, and fuses all patches into one
    conforming mesh (`fused.pkl`).
 2. **Remeshing stage** (`remeshing/remesh.py`): remeshes the fused mesh to a target edge length with
-   wildmeshing-toolkit's isotropic remeshing, keeping patches, feature chains and corners.
+   wildmeshing-toolkit's isotropic remeshing, in memory, keeping patches, feature chains and corners.
 
 ## Install
 
@@ -76,8 +76,7 @@ plus `result.json` (per-face status and timings). The remeshing stage adds:
   `vertex_id` (B-rep vertex id of the corner vertices, -1 elsewhere)
 - `remeshed_edges.vtu`: the same points and one line per edge of a feature chain, with cell data `edge_id`
   (B-rep edge id); zero-length B-rep edges are only their corner vertex
-- `remeshed_report.json`: statistics of the remeshing, and `remesh_input.msh` / `remesh_features.json`, its
-  input
+- `remeshed_report.json`: statistics of the remeshing
 
 ## Evaluation scripts
 
