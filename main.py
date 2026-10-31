@@ -15,6 +15,7 @@ from initial_meshing import (
 from cad_io.write import atomic_save, output_fused_mesh
 from cad_io.read import atomic_load
 from operations.align import align_adjacent_patches
+from operations.remesh_background import start_mmg_helper
 import numpy as np
 import argparse
 from utils.print import print_if_verbose, ResultLog, classify_fail_reason
@@ -134,8 +135,10 @@ def mesh_one_face(face, edge_geometry_data, all_corners, target_error, mmg2d_pat
 _WORKER = {}
 
 
-def _worker_init(abs_file, part_index, edge_geometry_path, verbose, oversized_dump_dir):
+def _worker_init(abs_file, part_index, edge_geometry_path, verbose, oversized_dump_dir, mmg2d_path):
     # Only paths cross the pipe: a large payload here makes the parent block on each worker's start-up.
+    if mmg2d_path is None:
+        start_mmg_helper()  # boots while the part is read
     from abs import read_parts
     part = read_parts(abs_file)[part_index]
     _WORKER["faces"] = {face.id: face for face in part.Solid.faces}
@@ -160,8 +163,13 @@ def main():
                         help="Directory where results and checkpoints are written")
     parser.add_argument("--error_rel", type=float, default=1e-3,
                         help="Relative target error with respect to the model bounding box diagonal (default: 1e-3)")
+    parser.add_argument("--mmg", choices=("memory", "binary"), default="memory",
+                        help="How Mmg runs: in memory, through the mmgpy package, in a helper process "
+                             "(default), or as the mmg2d executable, on files. Both give the same meshes, "
+                             "bit for bit.")
     parser.add_argument("--mmg2d_path", type=str, default=None,
-                        help="Path to the mmg2d executable (default: the one of the mmgpy package, else mmg2d_O3 on PATH)")
+                        help="With --mmg binary: path to the mmg2d executable (default: the one of the mmgpy "
+                             "package, else mmg2d_O3 on PATH)")
     parser.add_argument("--part", type=int, default=0,
                         help="Part index within the ABS file (default: 0)")
     parser.add_argument("--patch", type=int, default=None,
@@ -174,11 +182,17 @@ def main():
                              "process may run on, i.e. its CPU affinity, or the CPU count where the OS does "
                              "not report it; 1 = serial). The output does not depend on it.")
     args = parser.parse_args()
-    if args.mmg2d_path is None:
-        args.mmg2d_path = default_mmg2d_path()
-    if shutil.which(args.mmg2d_path) is None:
-        parser.error(f"mmg2d executable not found: {args.mmg2d_path} (pip install -r requirements.txt, "
-                     "or pass --mmg2d_path)")
+    if args.mmg == "memory":  # mmg2d_path None runs Mmg in memory
+        if args.mmg2d_path is not None:
+            parser.error("--mmg2d_path is for --mmg binary")
+        if importlib.util.find_spec("mmgpy") is None:
+            parser.error("the mmgpy package is not installed (pip install -r requirements.txt)")
+    else:
+        if args.mmg2d_path is None:
+            args.mmg2d_path = default_mmg2d_path()
+        if shutil.which(args.mmg2d_path) is None:
+            parser.error(f"mmg2d executable not found: {args.mmg2d_path} (pip install -r requirements.txt, "
+                         "or pass --mmg2d_path)")
 
     os.makedirs(args.output_folder, exist_ok=True)
     ckpt_folder = Path(args.output_folder) / "checkpoints"
@@ -203,6 +217,9 @@ def main():
         from abs import read_parts
         parts = read_parts(args.abs_file)
         part = parts[args.part]
+        if args.mmg2d_path is None and (args.workers <= 1 or args.patch is not None
+                                        or len(part.Solid.faces) < PARALLEL_MIN_FACES):
+            start_mmg_helper()  # this process meshes the faces: its helper boots while the edges are sampled
         bbox = part._geometry_data.bbox
 
         diag_bbox = np.linalg.norm(np.array(bbox[0][1]) - np.array(bbox[0][0]))
@@ -308,7 +325,8 @@ def main():
                                          mp_context=mp.get_context("spawn"),
                                          initializer=_worker_init,
                                          initargs=(args.abs_file, args.part, str(edge_geometry_ckpt),
-                                                   config.verbose, config.oversized_dump_dir)) as pool:
+                                                   config.verbose, config.oversized_dump_dir,
+                                                   args.mmg2d_path)) as pool:
                     futures = [pool.submit(_worker_mesh_face, face.id, target_error, args.mmg2d_path, diag_bbox)
                                for face in sorted(todo, key=face_size, reverse=True)]  # largest first
                     try:

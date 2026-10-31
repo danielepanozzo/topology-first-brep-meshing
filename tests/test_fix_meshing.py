@@ -235,7 +235,7 @@ def run_main_with_pool(monkeypatch, tmp_path, plan):
     monkeypatch.setattr(config, "oversized_dump_dir", config.oversized_dump_dir)  # restored after the test
     box = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))), "data", "simple", "Box.hdf5")
     out = tmp_path / "out"
-    monkeypatch.setattr(sys, "argv", ["main.py", box, str(out), "--mmg2d_path", sys.executable, "--workers", "4"])
+    monkeypatch.setattr(sys, "argv", ["main.py", box, str(out), "--workers", "4"])
     with pytest.raises(Exception) as exc_info:
         main.main()
     checkpoints = sorted(int(p.stem.split("_")[1]) for p in (out / "checkpoints" / "local").glob("patch_*.pkl"))

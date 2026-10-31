@@ -28,5 +28,6 @@ collapsed_iso_line_rel_tol = 1e-7
 # Bound on the manifold retry loop in run_initial_meshing_for_face.
 manifold_refine_max = 4
 
-# Seconds one mmg2d run may take before mmg_remesh kills it and raises RuntimeError.
+# Seconds one mmg run may take before mmg_remesh kills it (its helper process, or the mmg2d
+# executable) and raises RuntimeError.
 mmg_timeout_seconds = 3600

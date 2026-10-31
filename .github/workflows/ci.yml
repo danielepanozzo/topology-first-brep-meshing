@@ -90,6 +90,27 @@ jobs:
             exit 1
           fi
 
+      # main.py ran Mmg in memory (mmgpy) above; with its executable the meshes must be the same, bit for bit
+      - name: Mmg in memory and as an executable agree
+        run: |
+          for f in data/simple/*.hdf5; do
+            m=$(basename "$f" .hdf5)
+            echo "::group::$m"
+            python main.py "$f" "out_binary/$m" --error_rel 0.05 --mmg binary
+            echo "::endgroup::"
+          done
+          python -c "
+          import os, pickle
+          import numpy as np
+          differ = []
+          for m in sorted(os.listdir('out_binary')):
+              a, b = (pickle.load(open(os.path.join(r, m, 'fused.pkl'), 'rb')) for r in ('out', 'out_binary'))
+              same = all(np.array_equal(x, y) for x, y in zip(a[:2], b[:2])) and a[2:] == b[2:]
+              print(m, 'identical' if same else 'DIFFERENT')
+              differ += [] if same else [m]
+          assert len(os.listdir('out_binary')) == 15 and not differ, f'the Mmg routes differ on {differ}'
+          "
+
       - name: Evaluation scripts
         run: |
           python get_distance.py -i out --cad-root data/simple -o out/distance.csv
@@ -111,4 +132,6 @@ jobs:
           path: |
             out/
             !out/**/checkpoints/
+            out_binary/
+            !out_binary/**/checkpoints/
           retention-days: 7

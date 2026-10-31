@@ -938,7 +938,7 @@ def _run_initial_meshing_for_face(
     face,
     edge_geometry_data: dict,
     target_error: float = 5e-2,
-    mmg2d_path: str = "mmg2d_O3",
+    mmg2d_path: Optional[str] = None,
     num_u_segments: int = 8,
     num_v_segments: int = 8,
     prev_V_uv = None, prev_F = None,
@@ -961,7 +961,8 @@ def _run_initial_meshing_for_face(
         as returned by ``create_feature_edge_geometry_data``.
     target_error : absolute error target of the mmg remeshing; not used on
         retries (attempt > 0).
-    mmg2d_path : path to the mmg2d executable.
+    mmg2d_path : the mmg2d executable to run mmg with, or None (the default)
+        to run it in memory; see operations.remesh_background.mmg_remesh.
     num_u_segments, num_v_segments : initial grid resolution.
     prev_V_uv, prev_F : UV mesh from previous attempt, used on retry
         (attempt > 0) to skip mmg remeshing and upsample instead.

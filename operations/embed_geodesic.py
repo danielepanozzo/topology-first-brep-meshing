@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Optional
 from operations.align import _get_boundary_edges
 from operations.remesh_background import (
     mmg_remesh, compute_mmg_factor, compute_first_fundamental_form,
@@ -419,7 +420,7 @@ def embed_loops_one_patch(V_uv: list,
                         target_error: float = 5e-2,
                         max_iterations: int = 5,
                         mmg_factor: float = None,
-                        mmg2d_path: str = "mmg2d_O3",
+                        mmg2d_path: Optional[str] = None,
                         u_periodic: bool = False,
                         v_periodic: bool = False,
                         singularity_sides: dict = None,

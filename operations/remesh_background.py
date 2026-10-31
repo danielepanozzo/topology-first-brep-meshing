@@ -15,6 +15,7 @@ max_iterations is reached.
 """
 
 import numpy as np
+import multiprocessing
 import subprocess
 import tempfile
 import os
@@ -27,6 +28,28 @@ GEOM_TOL = 1e-10
 # ---------------------------------------------------------------------------
 # Medit .mesh file I/O
 # ---------------------------------------------------------------------------
+
+def _mmg_edges(feature_edges, required_edges):
+    """The edges given to mmg, as both routes of mmg_remesh pass them.
+
+    Returns the 1-based edge pairs (the feature edges, by tag, then the
+    required edges), their reference tags (1 for a required edge) and the
+    1-based positions of the required edges in that list.
+    """
+    edges, tags = [], []
+    if feature_edges:
+        for tag, tag_edges in feature_edges.items():
+            for v0, v1 in tag_edges:
+                edges.append((v0, v1))
+                tags.append(tag)
+    req_start = len(edges)
+    if required_edges:
+        for v0, v1 in required_edges:
+            edges.append((v0, v1))
+            tags.append(1)
+    required_ids = list(range(req_start + 1, len(edges) + 1))
+    return edges, tags, required_ids
+
 
 def write_medit_mesh(
     path: str,
@@ -58,27 +81,16 @@ def write_medit_mesh(
         for i in range(nf):
             fh.write(f"{F[i, 0] + 1} {F[i, 1] + 1} {F[i, 2] + 1} 0\n")
 
-        all_edges = []
-        edge_tags = []
-        if feature_edges:
-            for tag, edges in feature_edges.items():
-                for v0, v1 in edges:
-                    all_edges.append((v0, v1))
-                    edge_tags.append(tag)
-        req_start = len(all_edges)
-        if required_edges:
-            for v0, v1 in required_edges:
-                all_edges.append((v0, v1))
-                edge_tags.append(1)
+        all_edges, edge_tags, required_ids = _mmg_edges(feature_edges, required_edges)
 
         if all_edges:
             fh.write(f"\nEdges\n{len(all_edges)}\n")
             for (v0, v1), tag in zip(all_edges, edge_tags):
                 fh.write(f"{v0} {v1} {tag}\n")
 
-        if required_edges:
-            fh.write(f"\nRequiredEdges\n{len(required_edges)}\n")
-            for idx in range(req_start + 1, req_start + len(required_edges) + 1):
+        if required_ids:
+            fh.write(f"\nRequiredEdges\n{len(required_ids)}\n")
+            for idx in required_ids:
                 fh.write(f"{idx}\n")
 
         if required_vertices:
@@ -94,16 +106,14 @@ def write_medit_mesh(
         fh.write("\nEnd\n")
 
 
-def write_medit_sol(
-    path: str,
+def mmg_metric(
     EE: np.ndarray,
     FF: np.ndarray,
     GG: np.ndarray,
     factor: float = 1.0,
-):
-    """Write a 2D anisotropic tensor metric in Medit .sol format.
+) -> np.ndarray:
+    """The 2D anisotropic tensor metric given to mmg, (nv, 3): m11, m12, m22.
 
-    The symmetric 2x2 metric tensor at each vertex has 3 components: m11, m12, m22.
     These correspond to E, F, G of the first fundamental form scaled by ``factor``.
 
     A tensor that is non-finite, not positive definite, or anisotropic beyond
@@ -112,7 +122,6 @@ def write_medit_sol(
     median scale of the valid tensors when s itself is unusable. The test is
     scale-free, so it does not depend on the model's units or on ``factor``.
     """
-    nv = len(EE)
     E = np.array(EE, dtype=float).reshape(-1)
     Fm = np.array(FF, dtype=float).reshape(-1)
     G = np.array(GG, dtype=float).reshape(-1)
@@ -124,72 +133,83 @@ def write_medit_sol(
         bad_scale = ~valid & ~(np.isfinite(s) & (s > 0))
     if bad_scale.any():
         if not valid.any():
-            raise ValueError("write_medit_sol: no valid metric tensor to take "
+            raise ValueError("mmg_metric: no valid metric tensor to take "
                              "a fallback scale from")
         s[bad_scale] = np.median(s[valid])
     E[~valid], Fm[~valid], G[~valid] = s[~valid], 0.0, s[~valid]
+    return factor * np.column_stack([E, Fm, G])
+
+
+def write_medit_sol(
+    path: str,
+    EE: np.ndarray,
+    FF: np.ndarray,
+    GG: np.ndarray,
+    factor: float = 1.0,
+):
+    """Write mmg_metric(EE, FF, GG, factor) in Medit .sol format."""
+    write_medit_metric(path, mmg_metric(EE, FF, GG, factor))
+
+
+def write_medit_metric(path: str, M: np.ndarray):
+    """Write (nv, 3) tensors (m11, m12, m22) in Medit .sol format, exactly (%.17g)."""
     with open(path, "w") as fh:
         fh.write("MeshVersionFormatted 2\n\n")
         fh.write("Dimension 2\n\n")
-        fh.write(f"SolAtVertices\n{nv}\n")
+        fh.write(f"SolAtVertices\n{len(M)}\n")
         fh.write("1 3\n")  # 1 solution of type 3 (tensor)
-        for i in range(nv):
-            e, f, g = float(E[i]), float(Fm[i]), float(G[i])
-            fh.write(f"{factor * e:.17g} {factor * f:.17g} {factor * g:.17g}\n")
+        for e, f, g in M.tolist():
+            fh.write(f"{e:.17g} {f:.17g} {g:.17g}\n")
         fh.write("\nEnd\n\n")
 
 
-def read_medit_mesh(path: str) -> Tuple[np.ndarray, np.ndarray, Dict[int, List[Tuple[int, int]]]]:
-    """Read a 2D triangle mesh from Medit .mesh format.
+def read_medit_meshb(path: str) -> Tuple[np.ndarray, np.ndarray, np.ndarray, np.ndarray]:
+    """Read the 2D mesh mmg2d writes in binary Medit format (.meshb).
+
+    Unlike its .mesh output, which prints coordinates with 15 significant
+    digits, .meshb holds them as doubles, so the mesh is mmg's own. mmg 5.8
+    writes format version 2: native-endian 32-bit integers, 64-bit reals, and
+    after each keyword the file offset of the next keyword and the count.
 
     Returns
     -------
     V : (nv, 2)
     F : (nf, 3), 0-based
-    tagged_edges : {tag: [(v0, v1), ...]} — 0-based edge pairs grouped by
-        Medit reference id. Empty dict if no Edges block.
+    E : (ne, 2), 0-based edges
+    E_ref : (ne,) their reference tags
     """
-    V = None
-    F = None
-    tagged_edges: Dict[int, List[Tuple[int, int]]] = {}
-    with open(path, "r") as fh:
-        lines = fh.readlines()
-
-    i = 0
-    while i < len(lines):
-        line = lines[i].strip()
-        if line == "Vertices":
-            i += 1
-            nv = int(lines[i].strip())
-            V = np.zeros((nv, 2))
-            for vi in range(nv):
-                i += 1
-                parts = lines[i].strip().split()
-                V[vi, 0] = float(parts[0])
-                V[vi, 1] = float(parts[1])
-        elif line == "Triangles":
-            i += 1
-            nf = int(lines[i].strip())
-            F = np.zeros((nf, 3), dtype=int)
-            for fi in range(nf):
-                i += 1
-                parts = lines[i].strip().split()
-                F[fi, 0] = int(parts[0]) - 1
-                F[fi, 1] = int(parts[1]) - 1
-                F[fi, 2] = int(parts[2]) - 1
-        elif line == "Edges":
-            i += 1
-            ne = int(lines[i].strip())
-            for ei in range(ne):
-                i += 1
-                parts = lines[i].strip().split()
-                v0, v1, tag = int(parts[0]) - 1, int(parts[1]) - 1, int(parts[2])
-                tagged_edges.setdefault(tag, []).append((v0, v1))
-        i += 1
-
+    with open(path, "rb") as fh:
+        buf = fh.read()
+    head = np.frombuffer(buf, dtype=np.int32, count=2)
+    if head[0] != 1 or head[1] != 2:
+        raise RuntimeError(f"{path}: not a native-endian Medit version 2 file "
+                           f"(code {head[0]}, version {head[1]})")
+    dim, V, F, E = 2, None, None, np.zeros((0, 3), dtype=np.int32)
+    pos = 8
+    while pos + 4 <= len(buf):
+        kwd, next_pos = np.frombuffer(buf, dtype=np.int32, count=2, offset=pos)
+        if kwd == 54:  # End
+            break
+        if kwd == 3:  # Dimension
+            dim = int(np.frombuffer(buf, dtype=np.int32, count=1, offset=pos + 8)[0])
+        elif kwd in (4, 5, 6):  # Vertices, Edges, Triangles
+            n = int(np.frombuffer(buf, dtype=np.int32, count=1, offset=pos + 8)[0])
+            if kwd == 4:
+                rec = np.dtype([("c", np.float64, dim), ("ref", np.int32)])
+                V = np.frombuffer(buf, dtype=rec, count=n, offset=pos + 12)["c"][:, :2].copy()
+            else:
+                cols = 3 if kwd == 5 else 4
+                block = np.frombuffer(buf, dtype=np.int32, count=n * cols, offset=pos + 12)
+                if kwd == 5:
+                    E = block.reshape(n, 3)
+                else:
+                    F = block.reshape(n, 4)[:, :3].astype(int) - 1
+        if next_pos <= pos:
+            raise RuntimeError(f"{path}: bad offset {next_pos} after keyword {kwd} at {pos}")
+        pos = int(next_pos)
     if V is None or F is None:
         raise RuntimeError(f"Failed to parse mesh from {path}")
-    return V, F, tagged_edges
+    return V, F, E[:, :2].astype(int) - 1, E[:, 2].astype(int)
 
 
 # ---------------------------------------------------------------------------
@@ -338,47 +358,144 @@ def refine_edge_mesh(
 # MMG remeshing
 # ---------------------------------------------------------------------------
 
-def mmg_remesh(
-    V: np.ndarray,
-    F: np.ndarray,
-    EE: Optional[np.ndarray] = None,
-    FF_m: Optional[np.ndarray] = None,
-    GG: Optional[np.ndarray] = None,
-    metric_factor: float = 1.0,
-    hgrad: float = 1.5,
-    mmg2d_path: str = "mmg2d_O3",
-    feature_edges: Optional[Dict[int, List[Tuple[int, int]]]] = None,
-    required_vertices: Optional[List[int]] = None,
-    required_edges: Optional[List[Tuple[int, int]]] = None,
-    nosizreq: bool = False,
-) -> Tuple[np.ndarray, np.ndarray, Dict[int, List[Tuple[int, int]]]]:
-    """Run MMG2D remeshing via the CLI.
+def _mmg_in_memory(V, F, edges, edge_tags, required_ids, required_vertices, metric,
+                   hgrad, nosizreq):
+    """Run mmg through mmgpy on what _mmg_executable writes to its files.
 
-    Parameters
-    ----------
-    feature_edges : {tag: [(v0, v1), ...]} — 1-based edge pairs grouped by
-        Medit reference tag.
-    required_edges : list of (v0, v1) 1-based vertex index pairs frozen in the
-        output (no split / collapse / swap).
-
-    Returns
-    -------
-    V_out : (nv_out, 2) remeshed vertices.
-    F_out : (nf_out, 3) remeshed triangles (0-based).
-    tagged_edges : {tag: [(v0, v1), ...]} — 0-based output edges grouped by
-        Medit reference tag.
+    Returns V (nv, 2), F (nf, 3), E (ne, 2) 0-based and E_ref (ne,) as
+    read_medit_meshb does.
     """
+    import mmgpy
+
+    def new_mesh():
+        mesh = mmgpy.MmgMesh2D()
+        mesh.set_mesh_size(vertices=len(V), triangles=len(F), edges=len(edges))
+        mesh.set_vertices(np.ascontiguousarray(np.asarray(V)[:, :2], dtype=np.float64))
+        return mesh
+
+    mesh = new_mesh()
+    F = np.ascontiguousarray(F, dtype=np.int32)
+    try:
+        mesh.set_triangles(F)
+    except RuntimeError:
+        # MMG2D_Set_triangle refuses a zero-area triangle, which mmg's file
+        # reader takes. It has stored the triangle by then, as the reader
+        # does, but mmgpy's bulk setter gives the mesh up: set them one at a
+        # time on a new mesh and pass over the refusals (the sizes are right,
+        # so a zero area is the only one possible).
+        mesh = new_mesh()
+        for i, (v0, v1, v2) in enumerate(F.tolist()):
+            try:
+                mesh.set_triangle(v0, v1, v2, 0, i)
+            except RuntimeError:
+                pass
+    if edges:
+        mesh.set_edges(np.asarray(edges, dtype=np.int32) - 1,
+                       np.asarray(edge_tags, dtype=np.int32))
+    if required_ids:
+        mesh.set_required_edges(np.asarray(required_ids, dtype=np.int32) - 1)
+    if required_vertices:
+        mesh.set_required_vertices(np.asarray(required_vertices, dtype=np.int32) - 1)
+    mesh.set_field("tensor", metric)
+    options = {"verbose": -1}
+    if hgrad != 0:
+        options["hgrad"] = float(hgrad)
+    if nosizreq:
+        options["nosizreq"] = 1
+    mesh.remesh(**options)
+    E, E_ref = mesh.get_edges_with_refs()
+    return (mesh.get_vertices(), mesh.get_triangles().astype(int),
+            np.asarray(E).astype(int), np.asarray(E_ref).astype(int))
+
+
+# This process's mmg helper, (pid, process, connection), started on first use.
+_mmg_helper = None
+
+
+def _mmg_helper_main(conn):
+    """The helper process: runs _mmg_in_memory on each request until conn closes.
+
+    mmg's console output is dropped, as mmg_remesh drops the executable's
+    unless it fails; a failure comes back as its error message.
+    """
+    devnull = os.open(os.devnull, os.O_WRONLY)
+    os.dup2(devnull, 1)
+    os.dup2(devnull, 2)
+    while True:
+        try:
+            request = conn.recv()
+        except EOFError:
+            return
+        try:
+            reply = ("ok", _mmg_in_memory(**request))
+        except Exception as e:
+            reply = ("error", f"{type(e).__name__}: {e}")
+        conn.send(reply)
+
+
+def start_mmg_helper():
+    """Start this process's mmg helper process, unless it is running.
+
+    The first in-memory mmg_remesh call starts it otherwise. Starting it
+    earlier lets it boot (about 0.3 s: a new interpreter importing this
+    pipeline and mmgpy) while this process does other work.
+    """
+    global _mmg_helper
+    if (_mmg_helper is None or _mmg_helper[0] != os.getpid()
+            or not _mmg_helper[1].is_alive()):
+        ctx = multiprocessing.get_context("spawn")
+        conn, child_conn = ctx.Pipe()
+        proc = ctx.Process(target=_mmg_helper_main, args=(child_conn,), daemon=True)
+        proc.start()
+        child_conn.close()
+        _mmg_helper = (os.getpid(), proc, conn)
+
+
+def _mmg_in_helper(request):
+    """_mmg_in_memory(**request), run in this process's helper process.
+
+    As with the executable, a run longer than config.mmg_timeout_seconds is
+    killed and a crash in mmg ends only the helper; both raise RuntimeError.
+    The next call starts a new helper.
+    """
+    global _mmg_helper
+    start_mmg_helper()
+    _, proc, conn = _mmg_helper
+    try:
+        conn.send(request)
+        if not conn.poll(config.mmg_timeout_seconds):
+            raise RuntimeError(f"mmg2d timed out after {config.mmg_timeout_seconds} s")
+        status, result = conn.recv()
+    except BaseException as e:
+        # Timed out (here or by alarm_timeout), or the helper died: it is
+        # mid-request either way, so it is not reused.
+        _mmg_helper = None
+        proc.kill()
+        proc.join()
+        conn.close()
+        if isinstance(e, (EOFError, OSError)):
+            raise RuntimeError(
+                f"mmg2d failed: its helper process ended (exit code {proc.exitcode})") from None
+        raise
+    if status != "ok":
+        raise RuntimeError(f"mmg2d failed: {result}")
+    return result
+
+
+def _mmg_executable(mmg2d_path, V, F, feature_edges, required_vertices, required_edges,
+                    metric, hgrad, nosizreq):
+    """Run the mmg2d executable at mmg2d_path on files; returns what _mmg_in_memory does."""
     tmpdir = tempfile.mkdtemp()
     try:
         mesh_in = os.path.join(tmpdir, "input.mesh")
         sol_in = os.path.join(tmpdir, "input.sol")
-        mesh_out = os.path.join(tmpdir, "output.mesh")
+        mesh_out = os.path.join(tmpdir, "output.meshb")
 
         write_medit_mesh(mesh_in, V, F,
                          feature_edges=feature_edges,
                          required_vertices=required_vertices,
                          required_edges=required_edges)
-        write_medit_sol(sol_in, EE, FF_m, GG, metric_factor)
+        write_medit_metric(sol_in, metric)
 
         cmd = [
             mmg2d_path,
@@ -403,12 +520,67 @@ def mmg_remesh(
                 f"stdout: {result.stdout}\nstderr: {result.stderr}"
             )
 
-        V_out, F_out, tagged_edges_out = read_medit_mesh(mesh_out)
-        if len(F_out) == 0:
-            raise ValueError(f"mmg2d returned no triangles ({len(V_out)} vertices)")
+        return read_medit_meshb(mesh_out)
     finally:
         import shutil
         shutil.rmtree(tmpdir, ignore_errors=True)
+
+
+def mmg_remesh(
+    V: np.ndarray,
+    F: np.ndarray,
+    EE: Optional[np.ndarray] = None,
+    FF_m: Optional[np.ndarray] = None,
+    GG: Optional[np.ndarray] = None,
+    metric_factor: float = 1.0,
+    hgrad: float = 1.5,
+    mmg2d_path: Optional[str] = None,
+    feature_edges: Optional[Dict[int, List[Tuple[int, int]]]] = None,
+    required_vertices: Optional[List[int]] = None,
+    required_edges: Optional[List[Tuple[int, int]]] = None,
+    nosizreq: bool = False,
+) -> Tuple[np.ndarray, np.ndarray, Dict[int, List[Tuple[int, int]]]]:
+    """Run MMG2D remeshing.
+
+    With mmg2d_path None (the default) mmg runs in memory, through mmgpy, in
+    a helper process; otherwise the mmg2d executable at mmg2d_path runs on
+    files. Both give mmg the same mesh, metric and options and read back its
+    doubles, so they return the same mesh, bit for bit. Either way a run
+    longer than config.mmg_timeout_seconds is killed, and that or any mmg
+    failure raises RuntimeError. The helper process is started by
+    multiprocessing's spawn, so a script calling this needs the usual
+    ``if __name__ == "__main__":`` guard.
+
+    Parameters
+    ----------
+    feature_edges : {tag: [(v0, v1), ...]} — 1-based edge pairs grouped by
+        Medit reference tag.
+    required_edges : list of (v0, v1) 1-based vertex index pairs frozen in the
+        output (no split / collapse / swap).
+
+    Returns
+    -------
+    V_out : (nv_out, 2) remeshed vertices.
+    F_out : (nf_out, 3) remeshed triangles (0-based).
+    tagged_edges : {tag: [(v0, v1), ...]} — 0-based output edges grouped by
+        Medit reference tag.
+    """
+    metric = mmg_metric(EE, FF_m, GG, metric_factor)
+    if mmg2d_path is None:
+        edges, edge_tags, required_ids = _mmg_edges(feature_edges, required_edges)
+        V_out, F_out, E, E_ref = _mmg_in_helper(dict(
+            V=V, F=F, edges=edges, edge_tags=edge_tags, required_ids=required_ids,
+            required_vertices=required_vertices, metric=metric,
+            hgrad=hgrad, nosizreq=nosizreq))
+    else:
+        V_out, F_out, E, E_ref = _mmg_executable(
+            mmg2d_path, V, F, feature_edges, required_vertices, required_edges,
+            metric, hgrad, nosizreq)
+    if len(F_out) == 0:
+        raise ValueError(f"mmg2d returned no triangles ({len(V_out)} vertices)")
+    tagged_edges_out: Dict[int, List[Tuple[int, int]]] = {}
+    for (v0, v1), tag in zip(E.tolist(), E_ref.tolist()):
+        tagged_edges_out.setdefault(tag, []).append((v0, v1))
 
     # Monitoring only: dump oversized state for later investigation, never
     # interfere with the run.
@@ -822,7 +994,7 @@ def remesh_with_error_and_edge_metric(
     F: np.ndarray,
     target_error: Optional[float] = 5e-2,
     hgrad: float = -1,
-    mmg2d_path: str = "mmg2d_O3",
+    mmg2d_path: Optional[str] = None,
     max_iterations: int = 10,
 ) -> Tuple[np.ndarray, np.ndarray, float]:
     """Remesh a UV mesh using an anisotropic tensor metric from the first
@@ -841,7 +1013,8 @@ def remesh_with_error_and_edge_metric(
     target_error : if given, iterate until avg triangle approximation error
         is within this threshold.
     hgrad : MMG gradation parameter.
-    mmg2d_path : path to the mmg2d executable.
+    mmg2d_path : the mmg2d executable to run mmg with, or None (the default)
+        to run it in memory; see mmg_remesh.
     max_iterations : maximum number of MMG passes.
 
     Returns
@@ -939,7 +1112,7 @@ def insert_feature_edges_uv(
     face,
     edge_geometry_data: dict,
     target_3d_length: float = 5e-2,
-    mmg2d_path: str = "mmg2d_O3",
+    mmg2d_path: Optional[str] = None,
     max_iterations: int = 5,
     base_factor: Optional[float] = None,
     local_finer_ratio: float = 10.0,
@@ -961,7 +1134,8 @@ def insert_feature_edges_uv(
     F : (nf, 3) triangle connectivity from remeshing (0-based).
     face : abs Face object with ``.loops``, ``.surface``.
     edge_geometry_data : dict mapping edge_id -> (n, 3) refined 3D polyline.
-    mmg2d_path : path to the mmg2d executable.
+    mmg2d_path : the mmg2d executable to run mmg with, or None (the default)
+        to run it in memory; see mmg_remesh.
     target_3d_length, max_iterations, base_factor, local_finer_ratio : unused;
         the baseline metric always comes from the feature-point spacing.
 
@@ -1428,7 +1602,7 @@ def refine_background_for_feature_conflicts(
     F: np.ndarray,
     face,
     edge_geometry_data: dict,
-    mmg2d_path: str = "mmg2d_O3",
+    mmg2d_path: Optional[str] = None,
     beta: float = CONFLICT_BETA,
     max_halvings: int = CONFLICT_MAX_HALVINGS,
     periodic_sides=None,

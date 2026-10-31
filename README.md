@@ -29,8 +29,10 @@ is installed.
 
 The two C++ tools the pipeline calls also come from `requirements.txt`:
 
-- `mmg2d_O3` (forward stage, Mmg 5.8.0) comes with the mmgpy package; `main.py` finds it there.
-  `--mmg2d_path` selects another build.
+- Mmg 5.8.0 (forward stage) comes with the mmgpy package. By default `main.py` runs it in memory through
+  mmgpy, in a helper process per worker, which kills a run longer than an hour (`mmg_timeout_seconds` in
+  `utils/config.py`). `--mmg binary` runs its `mmg2d_O3` executable on files instead, the one in the
+  mmgpy package or the build `--mmg2d_path` names; the meshes are the same, bit for bit.
 - The isotropic remeshing (remeshing stage) is wildmeshing-toolkit's Python package `wildmeshing`, which
   pip builds from source (pinned commit). This needs git, a C++17 compiler (the Xcode command-line tools on
   macOS, g++ or clang on Linux, Visual Studio on Windows) and GMP on Linux (`apt install libgmp-dev`) and

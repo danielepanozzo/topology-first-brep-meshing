@@ -6,7 +6,7 @@ h5py==3.13.0
 libigl==2.5.1
 matplotlib==3.9.2
 meshio==5.3.5
-# Mmg 5.8.0's mmg2d_O3 executable, which the forward stage calls
+# Mmg 5.8.0, which the forward stage runs in memory (or, with --mmg binary, as its mmg2d_O3 executable)
 mmgpy==0.17.1
 numpy==2.4.4
 pillow==11.0.0
